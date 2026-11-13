@@ -96,6 +96,7 @@ curl -s -b $J -X POST $P/api/bots/1/control/stop -o /dev/null
 echo "== the sources and YouTube settings"
 curl -s -b $J $P/api/bots/1/settings > /tmp/panda-api-settings.json
 check "the settings have the sources" "$(json "d['sources']['search']" < /tmp/panda-api-settings.json)" youtube
+check "the upload limit defaults to 25 MB" "$(json "d['maxUploadSizeMb']" < /tmp/panda-api-settings.json)" 25
 # Each change starts from the settings read above.
 put() { python3 -c "
 import sys, json
@@ -105,6 +106,12 @@ check "yt-dlp clients with other characters are refused" "$(put "d['youTube']['r
 check "only known SponsorBlock categories" "$(put "d['youTube']['sponsorBlockCategories'] = ['sponsor', 'bogus']" | json "d['youTube']['sponsorBlockCategories']")" "['sponsor']"
 check "settings without the sources (an older panel) keep them" "$(put "d['sources']['radio'] = False; d['sources']['localLinks'] = True" >/dev/null; put "del d['sources']; del d['youTube']" | json "(d['sources']['radio'], d['youTube']['sponsorBlockCategories'])")" "(False, ['music_offtopic'])"
 put "pass" >/dev/null
+
+check "the upload limit accepts 1 MB" "$(put "d['maxUploadSizeMb'] = 1" | json "d['maxUploadSizeMb']")" 1
+check "the upload limit accepts 1024 MB" "$(put "d['maxUploadSizeMb'] = 1024" | json "d['maxUploadSizeMb']")" 1024
+check "an out-of-range upload limit is ignored" "$(put "d['maxUploadSizeMb'] = 1025" | json "d['maxUploadSizeMb']")" 1024
+check "an older settings client leaves the upload limit unchanged" "$(put "d.pop('maxUploadSizeMb')" | json "d['maxUploadSizeMb']")" 1024
+put "d['maxUploadSizeMb'] = 1" >/dev/null
 
 echo "== sound"
 sound() { curl -s -b $J -X PUT -H 'Content-Type: application/json' -d "$1" $P/api/bots/1/sound; }
@@ -218,6 +225,38 @@ echo "== login behind a proxy (X-Forwarded-For from this machine is believed)"
 for i in 1 2 3 4 5; do code -H 'X-Forwarded-For: 203.0.113.7' -H 'Content-Type: application/json' -d '{"name":"admin","password":"wrong"}' $P/api/login >/dev/null; done
 check "5 wrong passwords lock that visitor out" "$(code -H 'X-Forwarded-For: 203.0.113.7' -H 'Content-Type: application/json' -d '{"name":"admin","password":"testpass123"}' $P/api/login)" 429
 check "...not the others behind the same proxy" "$(code -H 'X-Forwarded-For: 203.0.113.8' -H 'Content-Type: application/json' -d '{"name":"admin","password":"testpass123"}' $P/api/login)" 204
+
+echo "== browser audio uploads"
+T=$HOME/panda-test-env
+put "d['maxUploadSizeMb'] = 1" >/dev/null
+head -c 1048577 /dev/zero > /tmp/panda-upload-too-large.mp3
+check "the per-file upload limit is enforced" "$(code -b $J -F "file=@/tmp/panda-upload-too-large.mp3" $P/api/bots/1/upload)" 413
+check "unsupported file types are refused" "$(code -b $J -F "file=@$T/data/config.json" $P/api/bots/1/upload)" 400
+put "d['maxUploadSizeMb'] = 25" >/dev/null
+UPLOAD=$(curl -s -b $J -F "file=@$T/web/song.mp3" $P/api/bots/1/upload)
+check "an audio upload becomes a queued track" "$(printf '%s' "$UPLOAD" | json "d['source']")" upload
+check "the track title comes from the audio tags" "$(printf '%s' "$UPLOAD" | json "d['title']")" "Web Song"
+UPLOAD_ID=$(printf '%s' "$UPLOAD" | json "d['id']")
+check "the uploaded track is reusable from the library" "$(curl -s -b $J "$P/api/library?q=Web%20Song" | json "d['items'][0]['id']")" "$UPLOAD_ID"
+check "uploaded tracks can be saved to playlists" "$(post /api/playlists "{\"name\":\"Uploads\",\"songs\":[{\"id\":\"$UPLOAD_ID\",\"title\":\"Web Song\",\"channel\":\"Web Artist\",\"duration\":60,\"source\":\"upload\"}]}" | json "len(d['songs'])")" 1
+DUPLICATE_STATUS=$(curl -s -b $J -F "file=@$T/web/song.mp3;filename=Web Song.mp3" -o /tmp/panda-api-duplicate.json -w '%{http_code}' $P/api/bots/1/upload)
+check "the same audio cannot be uploaded twice" "$DUPLICATE_STATUS" 409
+check "the duplicate error uses the track title" "$(json "d['error']" < /tmp/panda-api-duplicate.json)" duplicate-upload
+check "the same track filename needs no extra title" "$(json "d.get('trackTitle')" < /tmp/panda-api-duplicate.json)" None
+DUPLICATE_NAMED_STATUS=$(curl -s -b $J -F "file=@$T/web/song.mp3;filename=renamed.mp3" -o /tmp/panda-api-duplicate-named.json -w '%{http_code}' $P/api/bots/1/upload)
+check "a renamed duplicate is refused" "$DUPLICATE_NAMED_STATUS" 409
+check "a renamed duplicate identifies the existing track" "$(json "d['trackTitle']" < /tmp/panda-api-duplicate-named.json)" "Web Song"
+curl -s -b $J -X POST $P/api/bots/1/control/stop -o /dev/null
+COVER_STATUS=$(curl -s -b $J -F "file=@$T/web/song-cover.mp3" -o /tmp/panda-api-cover-upload.json -w '%{http_code}' $P/api/bots/1/upload)
+check "the covered audio upload succeeds" "$COVER_STATUS" 200
+if [ "$COVER_STATUS" = 200 ]; then
+	COVERED_ID=$(json "d['id']" < /tmp/panda-api-cover-upload.json)
+	COVER_URL="/api/library/$COVERED_ID/cover"
+	check "embedded cover art is linked on uploaded tracks" "$(json "d['thumbnail']" < /tmp/panda-api-cover-upload.json)" "$COVER_URL"
+	check "embedded cover art is served to authenticated users" "$(code -b $J "$P$COVER_URL")" 200
+else
+	echo "      upload error: $(json "d.get('error', 'unknown')" < /tmp/panda-api-cover-upload.json)"
+fi
 
 echo "== backup (last: restoring one stops Panda)"
 curl -s -b $J $P/api/backup -o /tmp/panda-backup.zip

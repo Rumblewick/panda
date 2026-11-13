@@ -672,15 +672,18 @@ public sealed class Player : IDisposable
 
 		var sound = For(track, Sound.Of(settings.Bot));
 		AudioStream audio;
-		// Only YouTube songs are saved (their id names the file).
-		var file = track.IsYouTube ? library.GetFile(track.Id) : null;
+		// YouTube songs and panel uploads are saved locally.
+		var savedToDisk = track.IsYouTube || track.Source == Media.Upload;
+		var file = savedToDisk ? library.GetFile(track.Id) : null;
 		// Every song is brought to the same loudness: from the start when it was measured, else while it plays.
-		var measured = track.IsYouTube ? library.LoudnessOf(track.Id) : null;
+		var measured = savedToDisk ? library.LoudnessOf(track.Id) : null;
 		var leveler = config.Audio.Normalize ? new Leveler(config.Audio.TargetLufs, measured, track.IsLive) : null;
 		if (heardLevel != null) leveler?.ContinueFrom(heardLevel);
 		string? tee = null;
 		try
 		{
+			if (track.Source == Media.Upload && file is null)
+				throw new YouTubeException("unavailable");
 			if (file != null)
 			{
 				audio = youtube.OpenFile(file, startSeconds, sound: sound);
@@ -726,7 +729,7 @@ public sealed class Player : IDisposable
 		timePipe.Paused = false;
 		if (!seeking && retry == 0)
 		{
-			if (track.IsYouTube) library.MarkPlayed(settings.Id, track);
+			if (savedToDisk) library.MarkPlayed(settings.Id, track);
 			_ = Task.Run(() => TrackStarted?.Invoke(track));
 		}
 		if (retry > 0)

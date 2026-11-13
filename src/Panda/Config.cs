@@ -733,6 +733,8 @@ public sealed class LibrarySettings
 	public bool Enabled { get; set; } = true;
 	/// <summary>When the library is bigger than this, the least played songs are deleted. 0 = no limit.</summary>
 	public int MaxSizeMb { get; set; } = 5120;
+	/// <summary>Maximum size of a file uploaded through the panel, in megabytes.</summary>
+	public int MaxUploadSizeMb { get; set; } = 25;
 	/// <summary>Folder for the songs; empty = "library" inside the data folder.</summary>
 	public string Path { get; set; } = "";
 }

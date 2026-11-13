@@ -240,11 +240,13 @@ body.playing .eq { display: inline-flex; }
 .vol-val { width: 2.2em; text-align: right; font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- add / search ---------- */
-.add-form { position: relative; display: flex; gap: 8px; }
+.add-form { position: relative; display: flex; flex-wrap: wrap; gap: 8px; }
 .add-form input { padding-left: 42px; border-radius: 999px; min-height: 48px; }
+.add-form > input[type="text"] { flex: 1 1 180px; min-width: 0; }
 .add-ic { position: absolute; left: 15px; top: 14px; color: var(--muted); pointer-events: none; }
 .add-form .btn { min-height: 48px; }
 #results-wrap { margin-top: 14px; }
+#upload-status { margin-top: 14px; }
 .list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 
 /* ---------- track lists ---------- */

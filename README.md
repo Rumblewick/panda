@@ -33,11 +33,15 @@ Panda talks to the server directly, so it stays light: the bot itself uses about
 - 🔗 **Links from anywhere** — SoundCloud, Bandcamp, Mixcloud, Vimeo, Twitch and audio files play from
   there; **Spotify, Apple Music, Deezer and Tidal** links are looked up on YouTube (a Spotify album or
   playlist comes song by song); any other page: its title is looked up. Each source can be turned off.
+- ⬆️ **Browser uploads** — upload common audio files directly from the panel; each file is queued and
+  saved in the library. Duplicate audio is refused, with the existing track name shown when it differs.
+  Embedded cover art is shown when present. The per-file limit is 25 MB by default and can be set
+  from 1 MB to 1 GB.
 - 📻 **Internet radio** — paste a station's stream link (Icecast/Shoutcast, `.m3u`, `.pls`), or find
   stations by name, country and genre in the panel (from [Radio Browser](https://www.radio-browser.info/))
   and with `!fm <name>`. What the station plays shows in the panel and the bot's description.
-- 📚 **Song library** — every song you request is saved on disk. Songs you play again start instantly
-  and never touch YouTube again; when the library is full, the least played songs make room.
+- 📚 **Song library** — YouTube songs are saved when library saving is on, and browser uploads are
+  saved as well. Saved songs start instantly; when the library is full, the least played make room.
 - ⚡ **No waiting between songs** — the next songs in the queue are downloaded ahead of time.
 - ✨ **Autoplay** — when the queue runs out, Panda keeps playing songs like the last one (YouTube's Mix).
   Off by default; `!autoplay` or the ✨ button turns it on. (Up to 0.5 this was called "radio".)
@@ -398,7 +402,7 @@ Everything is editable in the panel; the file is `/var/lib/panda/config.json` (o
                "youTubeMusic": true, "soundCloud": true, "sites": true, "services": true, "pages": true, "radio": true,
                "radioNames": true,                                 // song names from radio.net
                "localLinks": false },                              // links into the local network
-  "library": { "enabled": true, "maxSizeMb": 5120, "path": "" },   // 0 MB = no limit; empty path = data/library
+  "library": { "enabled": true, "maxSizeMb": 5120, "maxUploadSizeMb": 25, "path": "" },   // size 0 = unlimited; upload limit 1–1024 MB
   "audio": { "normalize": true, "targetLufs": -14 }   // -18 natural, -14 standard, -11 loud
 }
 ```
@@ -453,6 +457,7 @@ Revoking the key in the panel stops it at once, including open live streams.
 
 A few of the calls: `GET /api/bots/{bot}/state` (what plays, the queue), `POST /api/bots/{bot}/play`
 `{"query": "name or link"}` (for an album or playlist the answer also says how many `more` songs come),
+`POST /api/bots/{bot}/upload` (multipart field `file`, common audio formats; adds it to the queue),
 `POST /api/bots/{bot}/fm` `{"uuid": "<Radio Browser station id>"}`, `GET /api/radio/search?name=&country=&tag=`,
 `POST /api/bots/{bot}/autoplay` `{"on": true}`, `PUT /api/bots/{bot}/sound` `{"equalizer": "bass", "effect": "nightcore",
 "speed": 1.25, "eightD": true, "crossfade": 5}` (what's left out stays).

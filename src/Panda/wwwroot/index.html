@@ -185,8 +185,10 @@
           <svg class="ic add-ic" aria-hidden="true"><use href="#i-search"/></svg>
           <input id="add-q" type="text" autocomplete="off" enterkeyhint="search" data-i18n-ph="addPh" data-i18n-aria="addPh">
           <button id="add-go" class="btn primary" type="submit"><svg class="ic"><use href="#i-plus"/></svg><span class="lbl" data-i18n="add">Add</span></button>
+          <label class="btn ghost file-btn"><svg class="ic"><use href="#i-upload"/></svg><span data-i18n="uploadFile">Upload audio</span><input id="add-file" type="file" accept=".aac,.aif,.aiff,.flac,.m4a,.mp3,.oga,.ogg,.opus,.wav,.wma"></label>
           <button id="open-radio" class="btn ghost js-radio" type="button" data-i18n-aria="radioTitle"><svg class="ic"><use href="#i-radio"/></svg><span class="lbl" data-i18n="radio">Radio</span></button>
         </form>
+        <p id="upload-status" class="hint" role="status" aria-live="polite" hidden></p>
         <div id="results-wrap" hidden>
           <div class="list-head">
             <h3 class="eyebrow" data-i18n="results">Results</h3>
@@ -442,6 +444,9 @@
         <label class="field"><span data-i18n="sLibMax">Size limit (GB)</span>
           <input name="libraryMaxGb" type="number" min="0" max="976" step="any" inputmode="decimal" required></label>
         <p class="hint" data-i18n="sLibMaxHint"></p>
+        <label class="field"><span data-i18n="sMaxUpload">Maximum upload size (MB)</span>
+          <input name="maxUploadSizeMb" type="number" min="1" max="1024" step="1" required></label>
+        <p class="hint" data-i18n="sMaxUploadHint"></p>
         <label class="switch"><input type="checkbox" name="normalizeVolume"><span class="track" aria-hidden="true"></span><span data-i18n="sNorm">Play songs equally loud</span></label>
         <p class="hint" data-i18n="sNormHint"></p>
         <label class="field"><span data-i18n="sTarget">How loud</span>

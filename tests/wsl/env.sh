@@ -48,6 +48,11 @@ pkill -f "fake-web.py" || true
 mkdir -p "$T/web"
 ffmpeg -loglevel error -f lavfi -i "sine=frequency=330:duration=20" -c:a libmp3lame -b:a 128k "$T/web/radio.mp3"
 ffmpeg -loglevel error -f lavfi -i "sine=frequency=550:duration=60" -metadata title="Web Song" -metadata artist="Web Artist" -c:a libmp3lame -b:a 128k "$T/web/song.mp3"
+ffmpeg -loglevel error -f lavfi -i "color=c=red:s=64x64:d=0.1" -frames:v 1 -update 1 -y "$T/web/cover.jpg"
+ffmpeg -loglevel error -f lavfi -i "sine=frequency=550:duration=2" -i "$T/web/cover.jpg" \
+	-map 0:a -map 1:v -metadata title="Covered Web Song" -metadata artist="Web Artist" \
+	-c:a libmp3lame -b:a 128k -c:v copy -disposition:v:0 attached_pic -id3v2_version 3 \
+	-y "$T/web/song-cover.mp3"
 cp "$(dirname "$0")/fake-web.py" "$T/web/fake-web.py"
 setsid nohup python3 "$T/web/fake-web.py" "$T/web" > "$T/web.log" 2>&1 < /dev/null &
 for _ in $(seq 20); do curl -s http://127.0.0.1:8096/page.html >/dev/null && break; sleep 0.5; done

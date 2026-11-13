@@ -17,7 +17,8 @@ public sealed record Track(
 {
 	/// <summary>Where it plays from: null for YouTube (the id is the video's), <see cref="Media.Link"/> for
 	/// another site (through yt-dlp), <see cref="Media.Direct"/> for an audio file or an HLS stream (ffmpeg
-	/// reads it), <see cref="Media.Radio"/> for an internet radio stream (Icecast/Shoutcast).</summary>
+	/// reads it), <see cref="Media.Upload"/> for an audio file saved in the library, or
+	/// <see cref="Media.Radio"/> for an internet radio stream (Icecast/Shoutcast).</summary>
 	public string? Source { get; init; }
 	/// <summary>The page, file or stream of a song that isn't on YouTube.</summary>
 	public string? Link { get; init; }
@@ -41,10 +42,13 @@ public static class Media
 {
 	public const string Link = "link";
 	public const string Direct = "direct";
+	public const string Upload = "upload";
 	public const string Radio = "radio";
 
 	public static string Url(string id, string? source, string? link) =>
-		source is null ? $"https://www.youtube.com/watch?v={id}" : link ?? "";
+		source is null ? $"https://www.youtube.com/watch?v={id}" : source == Upload ? "" : link ?? "";
+
+	public static string UploadCoverUrl(string id) => $"/api/library/{Uri.EscapeDataString(id)}/cover";
 
 	public static string? Thumbnail(string id, string? source, string? art) =>
 		source is null ? $"https://i.ytimg.com/vi/{id}/hqdefault.jpg" : art;
@@ -364,6 +368,99 @@ public sealed partial class YouTube(PandaConfig config, ILogger<YouTube> log)
 		};
 		CheckLength(track);
 		return track;
+	}
+
+	/// <summary>Checks an uploaded local file with ffmpeg and reads its duration and audio tags.</summary>
+	public async Task<Track> ProbeLocalFileAsync(string path, string fallbackTitle, string requestedBy,
+		CancellationToken ct = default, string? coverPath = null)
+	{
+		var psi = new ProcessStartInfo(config.YouTube.FfmpegPath)
+		{
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			UseShellExecute = false,
+		};
+		foreach (var a in (string[])["-hide_banner", "-nostdin", "-i", path])
+			psi.ArgumentList.Add(a);
+		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+		timeout.CancelAfter(TimeSpan.FromSeconds(30));
+		using var proc = StartProcess(psi);
+		using var reg = timeout.Token.Register(() => Kill(proc));
+		var stderr = proc.StandardError.ReadToEndAsync(CancellationToken.None);
+		_ = proc.StandardOutput.ReadToEndAsync(CancellationToken.None);
+		await proc.WaitForExitAsync(CancellationToken.None);
+		if (timeout.IsCancellationRequested) throw new YouTubeException("timeout");
+		var text = await stderr;
+		if (!AudioStreamRegex().IsMatch(text)) throw new YouTubeException("bad-audio");
+		var m = FfDurationRegex().Match(text);
+		var duration = m.Success ? int.Parse(m.Groups[1].Value) * 3600 + int.Parse(m.Groups[2].Value) * 60 + int.Parse(m.Groups[3].Value) : 0;
+		if (duration <= 0) throw new YouTubeException("bad-audio");
+		var tags = FfTagRegex().Matches(text).GroupBy(x => x.Groups[1].Value.ToLowerInvariant()).ToDictionary(g => g.Key, g => g.First().Groups[2].Value.Trim());
+		var title = string.IsNullOrWhiteSpace(tags.GetValueOrDefault("title")) ? fallbackTitle : tags["title"];
+		title = new string(title.Where(c => !char.IsControl(c)).ToArray()).Trim();
+		if (title.Length == 0) title = fallbackTitle;
+		if (title.Length > 300) title = title[..300];
+		var artist = tags.GetValueOrDefault("artist");
+		artist = string.IsNullOrWhiteSpace(artist) ? "Uploaded file" : new string(artist.Where(c => !char.IsControl(c)).ToArray()).Trim();
+		if (artist.Length > 200) artist = artist[..200];
+		var track = new Track("", title, artist,
+			duration, requestedBy) { Source = Media.Upload };
+		CheckLength(track);
+		if (coverPath is not null && AttachedPictureRegex().IsMatch(text)
+			&& !await ExtractCoverAsync(path, coverPath, ct))
+			log.LogDebug("Could not extract embedded cover art from {File}", Path.GetFileName(path));
+		return track;
+	}
+
+	[GeneratedRegex(@"Stream #\d+:\d+.*: Audio:", RegexOptions.IgnoreCase)]
+	private static partial Regex AudioStreamRegex();
+
+	[GeneratedRegex(@"\(attached pic\)", RegexOptions.IgnoreCase)]
+	private static partial Regex AttachedPictureRegex();
+
+	async Task<bool> ExtractCoverAsync(string sourcePath, string coverPath, CancellationToken ct)
+	{
+		const int MaxCoverBytes = 1024 * 1024;
+		var psi = new ProcessStartInfo(config.YouTube.FfmpegPath)
+		{
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			UseShellExecute = false,
+		};
+		foreach (var arg in new[]
+		{
+			"-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-max_pixels", "16777216", "-i", sourcePath,
+			"-map", "0:v:0", "-frames:v", "1",
+			"-vf", "scale=512:512:force_original_aspect_ratio=decrease", "-q:v", "4", "-c:v", "mjpeg",
+			"-fs", MaxCoverBytes.ToString(CultureInfo.InvariantCulture), coverPath,
+		})
+			psi.ArgumentList.Add(arg);
+		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+		timeout.CancelAfter(TimeSpan.FromSeconds(30));
+		using var proc = StartProcess(psi);
+		using var reg = timeout.Token.Register(() => Kill(proc));
+		var stderr = proc.StandardError.ReadToEndAsync(CancellationToken.None);
+		_ = proc.StandardOutput.ReadToEndAsync(CancellationToken.None);
+		await proc.WaitForExitAsync(CancellationToken.None);
+		await stderr;
+		if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
+		if (timeout.IsCancellationRequested || proc.ExitCode != 0 || !File.Exists(coverPath))
+		{
+			File.Delete(coverPath);
+			return false;
+		}
+
+		var length = new FileInfo(coverPath).Length;
+		if (length is < 4 or > MaxCoverBytes)
+		{
+			File.Delete(coverPath);
+			return false;
+		}
+		var image = await File.ReadAllBytesAsync(coverPath, ct);
+		if (image[0] == 0xff && image[1] == 0xd8 && image[^2] == 0xff && image[^1] == 0xd9)
+			return true;
+		File.Delete(coverPath);
+		return false;
 	}
 
 	/// <summary>

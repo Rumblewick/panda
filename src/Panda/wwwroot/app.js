@@ -37,7 +37,7 @@ const I18N = {
     plFull: (x, n) => `"${x}" is full (500 songs): ${n === 1 ? '1 song' : `${n} songs`} didn't fit.`,
     plRenamed: 'Playlist renamed', plDeleted: 'Playlist deleted', 'err.bad-playlist-name': 'Playlist names are 1–40 characters with at least one letter or digit, and no slashes.',
     'err.playlist-exists': 'There is already a playlist with that name.',
-    addSong: 'Add a song', addPh: 'Song name or link', add: 'Add', playNow: 'Play now', added: 'Added', results: 'Results',
+    addSong: 'Add a song', addPh: 'Song name or link', add: 'Add', uploadFile: 'Upload audio', uploadProgress: n => `Uploading… ${n}%`, uploaded: 'uploaded', playNow: 'Play now', added: 'Added', results: 'Results',
     noResults: 'No results 🐾', close: 'Close', queue: 'Queue', clear: 'Clear', queueEmpty: 'The queue is empty. Search for something above!',
     history: 'Recently played', historyEmpty: 'Nothing played yet.', today: 'Today', yesterday: 'Yesterday', addAgain: 'Add again', remove: 'Remove', moveUp: 'Move up', moveDown: 'Move down',
     requestedBy: 'requested by', songs: n => n === 1 ? '1 song' : `${n} songs`,
@@ -57,7 +57,7 @@ const I18N = {
     cookiesSaved: 'Cookies saved 🍪', cookiesRemoved: 'Cookies removed', cookiesEmpty: 'Paste or choose a cookies.txt first', pwChanged: 'Password changed',
     confirmStop: 'Stop playback and clear the queue?', confirmClear: 'Clear the whole queue?', confirmCookies: 'Remove the saved YouTube cookies?',
     nothing: 'Nothing to do right now', invalid: 'Please check the highlighted fields', netError: 'Network error — is Panda running?',
-    'err.not-found': 'No song found for that search.', 'err.empty': 'Type a song name or paste a link.',
+    'err.not-found': 'No song found for that search.', 'err.empty': 'Type a song name or paste a link.', 'err.bad-audio': 'Choose a supported, valid audio file.', 'err.upload-storage': 'The uploaded file could not be saved on the server.', 'err.library-full': 'There is not enough free space in the song library for this upload.', 'err.duplicate-upload': name => name ? `This track already exists as “${name}”.` : 'This track already exists.',
     'err.playlist-empty': 'That playlist is empty.', 'err.not-youtube': 'Only YouTube links work.',
     'err.too-long': 'That song is too long.', 'err.bot-check': 'YouTube wants a bot check — add cookies in Settings.',
     'err.unavailable': 'That video is unavailable.', 'err.age': 'That video is age-restricted — add cookies in Settings.',
@@ -70,6 +70,7 @@ const I18N = {
     libNoMatch: 'No saved songs match.', libCapped: 'Showing the 500 most played songs — use the filter to find others.', showMore: 'Show more',
     plays: n => n === 1 ? '1 play' : `${n} plays`, requests: n => n === 1 ? '1 song' : `${n} songs`, delete: 'Delete', deleted: 'Deleted', confirmLibDelete: x => `Delete "${x}" from the library?`,
     sLib: 'Library', sLibOn: 'Save every requested song', sLibOnHint: 'When off, only the next two songs are downloaded ahead of time.',
+    sMaxUpload: 'Maximum upload size (MB)', sMaxUploadHint: 'Per file, from 1 to 1024 MB. Supports MP3, WAV, FLAC, OGG/Opus, M4A/AAC, AIFF and WMA.',
     sLibMax: 'Size limit (GB)', sLibMaxHint: 'When full, the least played songs are deleted first. 0 = no limit.', sLibMaxBad: 'Use 0 (no limit) or at least 0.1 GB.',
     sNorm: 'Play songs equally loud', sNormHint: 'Every song is brought to the same loudness (-14 LUFS, like YouTube and Spotify): saved songs from their first second, new ones and radio within a few seconds as they play. A limiter keeps raised songs from distorting.',
     bots: 'Bots', addBot: 'Add a bot', botAdded: 'Bot added — now set its channel', idle: 'Idle',
@@ -146,7 +147,7 @@ const I18N = {
     plFull: (x, n) => `"${x}" dolu (500 şarkı): ${n} şarkı eklenemedi.`,
     plRenamed: 'Listenin adı değişti', plDeleted: 'Liste silindi', 'err.bad-playlist-name': 'Liste adı 1–40 karakter olmalı, en az bir harf ya da rakam içermeli ve eğik çizgi içermemeli.',
     'err.playlist-exists': 'Bu adda bir liste zaten var.',
-    addSong: 'Şarkı ekle', addPh: 'Şarkı adı ya da link', add: 'Ekle', playNow: 'Hemen çal', added: 'Eklendi', results: 'Sonuçlar',
+    addSong: 'Şarkı ekle', addPh: 'Şarkı adı ya da link', add: 'Ekle', uploadFile: 'Ses dosyası yükle', uploadProgress: n => `Yükleniyor… ${n}%`, uploaded: 'yüklendi', playNow: 'Hemen çal', added: 'Eklendi', results: 'Sonuçlar',
     noResults: 'Sonuç yok 🐾', close: 'Kapat', queue: 'Sıra', clear: 'Temizle', queueEmpty: 'Sıra boş. Yukarıdan bir şey ara!',
     history: 'Son çalınanlar', historyEmpty: 'Henüz bir şey çalınmadı.', today: 'Bugün', yesterday: 'Dün', addAgain: 'Tekrar ekle', remove: 'Kaldır', moveUp: 'Yukarı taşı', moveDown: 'Aşağı taşı',
     requestedBy: 'İsteyen:', songs: n => `${n} şarkı`,
@@ -166,7 +167,7 @@ const I18N = {
     cookiesSaved: 'Çerezler kaydedildi 🍪', cookiesRemoved: 'Çerezler kaldırıldı', cookiesEmpty: 'Önce bir cookies.txt yapıştırın ya da seçin', pwChanged: 'Şifre değiştirildi',
     confirmStop: 'Çalma durdurulsun ve sıra temizlensin mi?', confirmClear: 'Tüm sıra temizlensin mi?', confirmCookies: 'Kayıtlı YouTube çerezleri kaldırılsın mı?',
     nothing: 'Şu an yapılacak bir şey yok', invalid: 'Lütfen işaretli alanları kontrol edin', netError: 'Ağ hatası — Panda çalışıyor mu?',
-    'err.not-found': 'Bu arama için şarkı bulunamadı.', 'err.empty': 'Bir şarkı adı yazın ya da link yapıştırın.',
+    'err.not-found': 'Bu arama için şarkı bulunamadı.', 'err.empty': 'Bir şarkı adı yazın ya da link yapıştırın.', 'err.bad-audio': 'Desteklenen, geçerli bir ses dosyası seçin.', 'err.upload-storage': 'Yüklenen dosya sunucuya kaydedilemedi.', 'err.library-full': 'Bu yükleme için şarkı kütüphanesinde yeterli boş alan yok.', 'err.duplicate-upload': name => name ? `Bu parça zaten “${name}” adıyla mevcut.` : 'Bu parça zaten mevcut.',
     'err.playlist-empty': 'Bu çalma listesi boş.', 'err.not-youtube': 'Sadece YouTube linkleri çalışır.',
     'err.too-long': 'Bu şarkı çok uzun.', 'err.bot-check': 'YouTube bot doğrulaması istiyor — Ayarlar\'dan çerez ekleyin.',
     'err.unavailable': 'Bu video kullanılamıyor.', 'err.age': 'Bu video yaş sınırlı — Ayarlar\'dan çerez ekleyin.',
@@ -179,6 +180,7 @@ const I18N = {
     libNoMatch: 'Eşleşen kayıtlı şarkı yok.', libCapped: 'En çok dinlenen 500 şarkı gösteriliyor — diğerleri için aramayı kullan.', showMore: 'Daha fazla göster',
     plays: n => `${n} kez çalındı`, requests: n => `${n} şarkı`, delete: 'Sil', deleted: 'Silindi', confirmLibDelete: x => `"${x}" kütüphaneden silinsin mi?`,
     sLib: 'Kütüphane', sLibOn: 'İstenen her şarkıyı kaydet', sLibOnHint: 'Kapalıyken sadece sıradaki iki şarkı önceden indirilir.',
+    sMaxUpload: 'En büyük yükleme boyutu (MB)', sMaxUploadHint: 'Dosya başına 1–1024 MB. MP3, WAV, FLAC, OGG/Opus, M4A/AAC, AIFF ve WMA desteklenir.',
     sLibMax: 'Boyut sınırı (GB)', sLibMaxHint: 'Dolduğunda en az dinlenen şarkılar önce silinir. 0 = sınırsız.', sLibMaxBad: '0 (sınırsız) ya da en az 0,1 GB girin.',
     sNorm: 'Şarkıları aynı yükseklikte çal', sNormHint: 'Her şarkı aynı yüksekliğe getirilir (-14 LUFS, YouTube ve Spotify gibi): kayıtlı şarkılar ilk saniyeden, yeni şarkılar ve radyo çalarken birkaç saniyede. Bir sınırlayıcı, yükseltilen şarkıların bozulmasını önler.',
     bots: 'Botlar', addBot: 'Bot ekle', botAdded: 'Bot eklendi — şimdi kanalını ayarla', idle: 'Boşta',
@@ -255,7 +257,7 @@ const I18N = {
     plFull: (x, n) => `« ${x} » est pleine (500 morceaux) : ${n <= 1 ? '1 morceau n\'a pas pu être ajouté' : `${n} morceaux n'ont pas pu être ajoutés`}.`,
     plRenamed: 'Playlist renommée', plDeleted: 'Playlist supprimée', 'err.bad-playlist-name': 'Un nom de playlist fait 1 à 40 caractères, avec au moins une lettre ou un chiffre, et sans barre oblique.',
     'err.playlist-exists': 'Une playlist porte déjà ce nom.',
-    addSong: 'Ajouter un morceau', addPh: 'Nom du morceau ou lien', add: 'Ajouter', playNow: 'Lire maintenant', added: 'Ajouté', results: 'Résultats',
+    addSong: 'Ajouter un morceau', addPh: 'Nom du morceau ou lien', add: 'Ajouter', uploadFile: 'Envoyer un fichier audio', uploadProgress: n => `Envoi… ${n} %`, uploaded: 'envoyé', playNow: 'Lire maintenant', added: 'Ajouté', results: 'Résultats',
     noResults: 'Aucun résultat 🐾', close: 'Fermer', queue: 'File d\'attente', clear: 'Vider', queueEmpty: 'La file est vide. Cherchez quelque chose ci-dessus !',
     history: 'Écoutés récemment', historyEmpty: 'Rien n\'a encore été joué.', today: 'Aujourd\'hui', yesterday: 'Hier', addAgain: 'Rajouter', remove: 'Retirer', moveUp: 'Monter', moveDown: 'Descendre',
     requestedBy: 'demandé par', songs: n => n <= 1 ? `${n} morceau` : `${n} morceaux`,
@@ -275,7 +277,7 @@ const I18N = {
     cookiesSaved: 'Cookies enregistrés 🍪', cookiesRemoved: 'Cookies supprimés', cookiesEmpty: 'Collez ou choisissez d\'abord un cookies.txt', pwChanged: 'Mot de passe changé',
     confirmStop: 'Arrêter la lecture et vider la file ?', confirmClear: 'Vider toute la file ?', confirmCookies: 'Supprimer les cookies YouTube enregistrés ?',
     nothing: 'Rien à faire pour le moment', invalid: 'Vérifiez les champs en surbrillance', netError: 'Erreur réseau — Panda est-il lancé ?',
-    'err.not-found': 'Aucun morceau trouvé pour cette recherche.', 'err.empty': 'Tapez un nom de morceau ou collez un lien.',
+    'err.not-found': 'Aucun morceau trouvé pour cette recherche.', 'err.empty': 'Tapez un nom de morceau ou collez un lien.', 'err.bad-audio': 'Choisissez un fichier audio valide et pris en charge.', 'err.upload-storage': 'Le fichier envoyé n’a pas pu être enregistré sur le serveur.', 'err.library-full': 'Il n’y a pas assez de place dans la bibliothèque pour cet envoi.', 'err.duplicate-upload': name => name ? `Ce morceau existe déjà sous le nom « ${name} ».` : 'Ce morceau existe déjà.',
     'err.playlist-empty': 'Cette playlist est vide.', 'err.not-youtube': 'Seuls les liens YouTube fonctionnent.',
     'err.too-long': 'Ce morceau est trop long.', 'err.bot-check': 'YouTube demande une vérification anti-robot — ajoutez des cookies dans les Paramètres.',
     'err.unavailable': 'Cette vidéo n\'est pas disponible.', 'err.age': 'Cette vidéo est soumise à une limite d\'âge — ajoutez des cookies dans les Paramètres.',
@@ -288,6 +290,7 @@ const I18N = {
     libNoMatch: 'Aucun morceau enregistré ne correspond.', libCapped: 'Affichage des 500 morceaux les plus joués — utilisez le filtre pour trouver les autres.', showMore: 'Afficher plus',
     plays: n => n <= 1 ? `${n} écoute` : `${n} écoutes`, requests: n => n <= 1 ? `${n} morceau` : `${n} morceaux`, delete: 'Supprimer', deleted: 'Supprimé', confirmLibDelete: x => `Supprimer « ${x} » de la bibliothèque ?`,
     sLib: 'Bibliothèque', sLibOn: 'Enregistrer chaque morceau demandé', sLibOnHint: 'Désactivé, seuls les deux prochains morceaux sont téléchargés à l\'avance.',
+    sMaxUpload: 'Taille maximale des fichiers (Mo)', sMaxUploadHint: 'Par fichier, de 1 à 1 024 Mo. Formats pris en charge : MP3, WAV, FLAC, OGG/Opus, M4A/AAC, AIFF et WMA.',
     sLibMax: 'Taille max. (Go)', sLibMaxHint: 'Une fois pleine, les morceaux les moins joués sont supprimés en premier. 0 = pas de limite.', sLibMaxBad: 'Mettez 0 (pas de limite) ou au moins 0,1 Go.',
     sNorm: 'Jouer les morceaux au même volume', sNormHint: 'Chaque morceau est amené au même volume (-14 LUFS, comme YouTube et Spotify) : les morceaux enregistrés dès la première seconde, les nouveaux et la radio en quelques secondes pendant la lecture. Un limiteur évite que les morceaux remontés saturent.',
     bots: 'Bots', addBot: 'Ajouter un bot', botAdded: 'Bot ajouté — choisissez maintenant son canal', idle: 'Inactif',
@@ -364,7 +367,7 @@ const I18N = {
     plFull: (x, n) => `„${x}“ ist voll (500 Songs): ${n === 1 ? '1 Song hat' : `${n} Songs haben`} nicht mehr reingepasst.`,
     plRenamed: 'Playlist umbenannt', plDeleted: 'Playlist gelöscht', 'err.bad-playlist-name': 'Playlist-Namen haben 1–40 Zeichen, mindestens einen Buchstaben oder eine Ziffer und keine Schrägstriche.',
     'err.playlist-exists': 'Es gibt schon eine Playlist mit diesem Namen.',
-    addSong: 'Song hinzufügen', addPh: 'Songname oder Link', add: 'Hinzufügen', playNow: 'Sofort abspielen', added: 'Hinzugefügt', results: 'Ergebnisse',
+    addSong: 'Song hinzufügen', addPh: 'Songname oder Link', add: 'Hinzufügen', uploadFile: 'Audiodatei hochladen', uploadProgress: n => `Wird hochgeladen… ${n} %`, uploaded: 'hochgeladen', playNow: 'Sofort abspielen', added: 'Hinzugefügt', results: 'Ergebnisse',
     noResults: 'Keine Ergebnisse 🐾', close: 'Schließen', queue: 'Warteschlange', clear: 'Leeren', queueEmpty: 'Die Warteschlange ist leer. Such oben nach etwas!',
     history: 'Zuletzt gespielt', historyEmpty: 'Noch nichts gespielt.', today: 'Heute', yesterday: 'Gestern', addAgain: 'Nochmal hinzufügen', remove: 'Entfernen', moveUp: 'Nach oben', moveDown: 'Nach unten',
     requestedBy: 'gewünscht von', songs: n => n === 1 ? '1 Song' : `${n} Songs`,
@@ -384,7 +387,7 @@ const I18N = {
     cookiesSaved: 'Cookies gespeichert 🍪', cookiesRemoved: 'Cookies entfernt', cookiesEmpty: 'Füge zuerst eine cookies.txt ein oder wähle eine aus', pwChanged: 'Passwort geändert',
     confirmStop: 'Wiedergabe stoppen und Warteschlange leeren?', confirmClear: 'Die ganze Warteschlange leeren?', confirmCookies: 'Die gespeicherten YouTube-Cookies entfernen?',
     nothing: 'Gerade gibt es nichts zu tun', invalid: 'Bitte prüf die markierten Felder', netError: 'Netzwerkfehler — läuft Panda?',
-    'err.not-found': 'Für diese Suche wurde kein Song gefunden.', 'err.empty': 'Gib einen Songnamen ein oder füg einen Link ein.',
+    'err.not-found': 'Für diese Suche wurde kein Song gefunden.', 'err.empty': 'Gib einen Songnamen ein oder füg einen Link ein.', 'err.bad-audio': 'Wähl eine gültige, unterstützte Audiodatei aus.', 'err.upload-storage': 'Die hochgeladene Datei konnte nicht auf dem Server gespeichert werden.', 'err.library-full': 'In der Songbibliothek ist nicht genug Platz für diesen Upload.', 'err.duplicate-upload': name => name ? `Dieser Song ist bereits unter „${name}“ vorhanden.` : 'Dieser Song ist bereits vorhanden.',
     'err.playlist-empty': 'Diese Playlist ist leer.', 'err.not-youtube': 'Nur YouTube-Links funktionieren.',
     'err.too-long': 'Dieser Song ist zu lang.', 'err.bot-check': 'YouTube will eine Bot-Prüfung — füg in den Einstellungen Cookies hinzu.',
     'err.unavailable': 'Dieses Video ist nicht verfügbar.', 'err.age': 'Dieses Video hat eine Altersbeschränkung — füg in den Einstellungen Cookies hinzu.',
@@ -397,6 +400,7 @@ const I18N = {
     libNoMatch: 'Keine gespeicherten Songs passen.', libCapped: 'Die 500 meistgespielten Songs werden gezeigt — nutz den Filter für die anderen.', showMore: 'Mehr zeigen',
     plays: n => n === 1 ? '1-mal gespielt' : `${n}-mal gespielt`, requests: n => n === 1 ? '1 Song' : `${n} Songs`, delete: 'Löschen', deleted: 'Gelöscht', confirmLibDelete: x => `„${x}“ aus der Bibliothek löschen?`,
     sLib: 'Bibliothek', sLibOn: 'Jeden gewünschten Song speichern', sLibOnHint: 'Wenn aus, werden nur die nächsten zwei Songs vorab heruntergeladen.',
+    sMaxUpload: 'Maximale Uploadgröße (MB)', sMaxUploadHint: 'Pro Datei 1–1.024 MB. Unterstützt werden MP3, WAV, FLAC, OGG/Opus, M4A/AAC, AIFF und WMA.',
     sLibMax: 'Größenlimit (GB)', sLibMaxHint: 'Wenn voll, werden die am wenigsten gespielten Songs zuerst gelöscht. 0 = kein Limit.', sLibMaxBad: 'Gib 0 (kein Limit) oder mindestens 0,1 GB ein.',
     sNorm: 'Songs gleich laut abspielen', sNormHint: 'Jeder Song wird auf dieselbe Lautheit gebracht (-14 LUFS, wie bei YouTube und Spotify): gespeicherte Songs ab der ersten Sekunde, neue und Radio in wenigen Sekunden beim Abspielen. Ein Limiter verhindert, dass angehobene Songs verzerren.',
     bots: 'Bots', addBot: 'Bot hinzufügen', botAdded: 'Bot hinzugefügt — leg jetzt seinen Channel fest', idle: 'Bereit',
@@ -496,7 +500,7 @@ let botId = store.get('panda.bot') || '';
 /** URL of an endpoint of the bot shown in the panel. */
 const B = path => `/api/bots/${encodeURIComponent(botId)}${path}`;
 
-class ApiError extends Error { constructor(code, status) { super(code); this.code = code; this.status = status; } }
+class ApiError extends Error { constructor(code, status, detail = null) { super(code); this.code = code; this.status = status; this.detail = detail; } }
 
 async function api(method, path, body) {
   const opt = { method, headers: {}, credentials: 'same-origin' };
@@ -508,14 +512,16 @@ async function api(method, path, body) {
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (res.status === 401 && path !== '/api/login') { showLogin(); throw new ApiError('unauthorized', 401); }
-  if (!res.ok) throw new ApiError((data && data.error) || (typeof data === 'string' && data) || `HTTP ${res.status}`, res.status);
+  if (!res.ok) throw new ApiError((data && data.error) || (typeof data === 'string' && data) || `HTTP ${res.status}`, res.status, data && data.trackTitle);
   return data;
 }
 
 function errText(e) {
   if (!(e instanceof ApiError)) return String(e && e.message || e);
   if (e.status === 0) return t('netError');
+  if (e.status === 413) return t('err.too-large');
   if (e.status === 403) return t('forbidden');
+  if (e.code === 'duplicate-upload') return t('err.duplicate-upload', e.detail);
   if (e.status === 409) return t('nothing');
   if (I18N.en['err.' + e.code]) return t('err.' + e.code);
   if (e.code.startsWith('missing:')) return t('err.missing') + e.code.slice(8);
@@ -783,8 +789,10 @@ function renderNow() {
     const tr = cur.track;
     if (shownTrackId !== tr.id + tr.requestedBy) {
       shownTrackId = tr.id + tr.requestedBy;
-      const src = safeUrl(tr.thumbnail);
+      const src = safeUrl(tr.thumbnail) || (tr.source === 'upload' ? 'img/avatar.png' : null);
       for (const img of [$('np-thumb'), $('np-bg')]) { img.hidden = !src; if (src) img.src = src; }
+      $('np-thumb').onerror = () => { $('np-thumb').onerror = null; $('np-thumb').src = 'img/avatar.png'; };
+      $('np-bg').onerror = () => { $('np-bg').onerror = null; $('np-bg').hidden = true; };
       const a = $('np-title'); a.textContent = tr.title;
       const href = safeUrl(tr.url); if (href) a.href = href; else a.removeAttribute('href');
       $('np-channel').textContent = tr.channel;
@@ -921,6 +929,48 @@ $('add-form').addEventListener('submit', async e => {
 });
 $('results-close').addEventListener('click', () => { searchSeq++; showResults(null); });
 
+function uploadFile(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', B('/upload'));
+    xhr.withCredentials = true;
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable) $('upload-status').textContent = t('uploadProgress', Math.floor(e.loaded / e.total * 100));
+    });
+    xhr.addEventListener('error', () => reject(new ApiError('network', 0)));
+    xhr.addEventListener('abort', () => reject(new ApiError('network', 0)));
+    xhr.addEventListener('load', () => {
+      let data = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { data = xhr.responseText; }
+      if (xhr.status === 401) { showLogin(); reject(new ApiError('unauthorized', 401)); return; }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new ApiError((data && data.error) || (typeof data === 'string' && data) || `HTTP ${xhr.status}`, xhr.status, data && data.trackTitle));
+        return;
+      }
+      resolve(data);
+    });
+    const body = new FormData();
+    body.append('file', file, file.name);
+    xhr.send(body);
+  });
+}
+$('add-file').addEventListener('change', async e => {
+  const input = e.currentTarget, file = input.files?.[0];
+  if (!file) return;
+  $('upload-status').hidden = false;
+  $('upload-status').textContent = t('uploadProgress', 0);
+  input.disabled = true;
+  try {
+    const track = await act(() => uploadFile(file), r => addedMsg(r, t('added')));
+    if (track) input.value = '';
+  } finally {
+    input.value = '';
+    input.disabled = false;
+    $('upload-status').hidden = true;
+    $('upload-status').textContent = '';
+  }
+});
+
 /** saved: library hits (shown first, null = reset), yt: YouTube results (undefined = still loading). */
 let shownResults = [null];
 function showResults(saved, yt) {
@@ -951,12 +1001,13 @@ function playButtons(tr, labelled, ...more) {
 }
 async function addTrack(btn, tr, now) {
   await busy(btn, async () => {
-    const r = await act(() => api('POST', B('/play'), { query: tr.url, now }), r => addedMsg(r, now ? t('playNow') : t('added')));
+    const r = await act(() => api('POST', B('/play'), playPayload(tr, now)), r => addedMsg(r, now ? t('playNow') : t('added')));
     // A short tick on the row (the toast says the rest); a lasting one stuck on lists that rarely redraw.
     const li = btn.closest('li');
     if (r && li) { li.classList.add('done'); setTimeout(() => li.classList.remove('done'), 2500); }
   });
 }
+const playPayload = (tr, now = false) => tr.source === 'upload' ? { id: tr.id, now } : { query: tr.url, now };
 
 /** Title (linked), channel · duration · requester · extra nodes. */
 function trackText(tr, { req = true, extra = [] } = {}) {
@@ -973,6 +1024,7 @@ const isStation = tr => !!tr && !!tr.isLive && String(tr.id || '').startsWith('r
 /** "📻" for a station, the site's name for a song from elsewhere, nothing for YouTube. */
 function srcBadge(tr) {
   if (!tr.source) return null;
+  if (tr.source === 'upload') return el('span', { class: 'badge src sm', text: t('uploaded') });
   if (isStation(tr)) return el('span', { class: 'badge src sm', text: '📻' });
   let host = '';
   try { host = new URL(tr.url).hostname.replace(/^(www|m|on|open)\./, ''); } catch { }
@@ -1140,7 +1192,7 @@ function renderHistory() {
   lastHistorySig = s;
   $('history').replaceChildren(...h.map(tr => {
     const b = el('button', { class: 'icon-btn sm', type: 'button', title: t('addAgain'), 'aria-label': `${t('addAgain')}: ${tr.title}` }, icon('plus'));
-    b.addEventListener('click', () => busy(b, () => act(() => api('POST', B('/play'), { query: tr.url }), r => `${t('added')}: ${r.title}`)));
+    b.addEventListener('click', () => busy(b, () => act(() => api('POST', B('/play'), playPayload(tr)), r => `${t('added')}: ${r.title}`)));
     const when = el('span', { class: 'when', title: new Date(tr.playedAt).toLocaleString(lang) }, icon('clock', 'ic sm'), document.createTextNode(playedAt(tr.playedAt)));
     return el('li', { class: 'track' }, thumb(tr), trackText(tr, { extra: [when] }), el('div', { class: 'acts' }, starButton(tr), b));
   }));
@@ -1327,6 +1379,7 @@ function fillSettings(s) {
   f.owner.value = s.owner || '';
   $('owner-hint').textContent = s.owner ? t('ownerHintName', s.ownerName || s.owner) : t('ownerHintNone');
   f.libraryEnabled.checked = !!s.libraryEnabled; f.normalizeVolume.checked = !!s.normalizeVolume;
+  f.maxUploadSizeMb.value = s.maxUploadSizeMb ?? 25;
   // Another value from config.json shows as the nearest choice.
   f.targetLufs.value = [-18, -14, -11].reduce((a, b) => Math.abs(b - s.targetLufs) < Math.abs(a - s.targetLufs) ? b : a, -14);
   f.targetLufs.disabled = !s.normalizeVolume;
@@ -1408,7 +1461,7 @@ $('set-form').addEventListener('submit', async e => {
     schedule: sched, publicPage: f.publicPage.checked, botOwners: f.botOwners.checked, owner: f.owner.value.trim(),
     afk: { enabled: f.afkEnabled.checked, channel: f.afkChannel.value.trim(), minutes: +f.afkMinutes.value, away: f.afkAway.checked,
       muted: f.afkMuted.checked, idle: f.afkIdle.checked, moveBack: f.afkMoveBack.checked, exemptGroups: [...afkExempt] },
-    libraryEnabled: f.libraryEnabled.checked, libraryMaxSizeMb: Math.round(gb * 1024), normalizeVolume: f.normalizeVolume.checked, targetLufs: +f.targetLufs.value,
+    libraryEnabled: f.libraryEnabled.checked, libraryMaxSizeMb: Math.round(gb * 1024), maxUploadSizeMb: +f.maxUploadSizeMb.value, normalizeVolume: f.normalizeVolume.checked, targetLufs: +f.targetLufs.value,
     sources: {
       search: f.srcSearch.value, fallback: f.srcFallback.checked, youTubeMusic: f.srcYouTubeMusic.checked, soundCloud: f.srcSoundCloud.checked,
       sites: f.srcSites.checked, services: f.srcServices.checked, pages: f.srcPages.checked, radio: f.srcRadio.checked, radioNames: f.srcRadioNames.checked, localLinks: f.srcLocal.checked,
@@ -1738,7 +1791,7 @@ $('pw-form').addEventListener('submit', async e => {
 /* ---------------- playlists ---------------- */
 const plBox = $('pl-box');
 let lastPlSig = '', openPl = null;
-const asSong = tr => ({ id: tr.id, title: tr.title, channel: tr.channel, duration: tr.duration, source: tr.source || null, link: tr.source ? tr.link : null, art: tr.source ? tr.art : null });
+const asSong = tr => ({ id: tr.id, title: tr.title, channel: tr.channel, duration: tr.duration, source: tr.source || null, link: tr.source ? tr.link : null, art: tr.source ? tr.art ?? tr.thumbnail : null });
 const plUrl = name => '/api/playlists/' + encodeURIComponent(name);
 
 plBox.open = store.get('panda.plOpen') === '1';

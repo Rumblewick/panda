@@ -1,8 +1,11 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Net.Http.Headers;
 
 namespace Panda;
 
@@ -55,7 +58,7 @@ public static class PanelApi
 					nickname = b.Config.Bot.Nickname,
 					title = t?.Title,
 					channel = t is { Source: Media.Direct or Media.Radio } ? null : t?.Channel,
-					thumbnail = t is { IsYouTube: false } ? t.Art : null,
+					thumbnail = t is { IsYouTube: false, Source: not Media.Upload } ? t.Art : null,
 					streamTitle = s.Current?.StreamTitle,
 					live = t?.IsLive ?? false,
 					position = s.Current?.Position ?? 0,
@@ -106,7 +109,7 @@ public static class PanelApi
 			await Snapshot(b, VisibleBots(ctx, config, bots), library, lists));
 		bot.MapGet("/events", Events);
 
-		bot.MapPost("/play", async (PlayRequest req, BotInstance b, Sources sources, HttpContext ctx) =>
+		bot.MapPost("/play", async (PlayRequest req, BotInstance b, Sources sources, Library library, HttpContext ctx) =>
 		{
 			var isAdmin = Manages(ctx);
 			if (req.Now && !isAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden); // it skips the current song
@@ -114,7 +117,13 @@ public static class PanelApi
 			{
 				var by = ctx.User.IsInRole(Roles.Admin) && req.RequestedBy is { Length: > 0 } r ? r : "🌐 " + ctx.User.Identity?.Name;
 				var requester = "panel:" + ctx.User.Identity?.Name;
-				var found = await sources.ResolveAsync(req.Query ?? "", by);
+				Resolved found;
+				if (req.Id is { Length: > 0 } id)
+				{
+					if (library.Find(id, by) is not { Source: Media.Upload } uploaded) return Results.NotFound();
+					found = new(uploaded);
+				}
+				else found = await sources.ResolveAsync(req.Query ?? "", by);
 				var track = found.Track with { RequesterId = requester };
 				if (req.Now) b.Player.PlayNow(track, exempt: true);   // admins only
 				else b.Player.Enqueue(track, exempt: isAdmin);
@@ -129,6 +138,7 @@ public static class PanelApi
 			catch (QueueFullException) { return Problem("queue-full"); }
 			catch (UserLimitException) { return Problem("user-limit"); }
 		});
+		bot.MapPost("/upload", UploadAudio);
 		bot.MapPost("/fm", async (FmRequest req, BotInstance b, RadioBrowser radios, RadioFavorites favorites, PandaConfig config, HttpContext ctx) =>
 		{
 			if (!config.Sources.Radio) return Problem("source-off");
@@ -291,6 +301,13 @@ public static class PanelApi
 		admin.MapDelete("/radio/favorites/{uuid}", (string uuid, RadioFavorites favorites) => Done(favorites.Remove(uuid)));
 
 		authed.MapGet("/library", (string? q, Library library) => library.GetInfo(q));
+		authed.MapGet("/library/{id}/cover", (string id, Library library, HttpContext ctx) =>
+		{
+			if (library.GetUploadCoverPath(id) is not { } path) return Results.NotFound();
+			ctx.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+			ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+			return Results.File(path, "image/jpeg");
+		});
 		// bot: an id or "all"; days: 0 = everything; tz: the browser's getTimezoneOffset().
 		authed.MapGet("/stats", (string? bot, int? days, int? tz, Stats stats, BotManager bots, PandaConfig config, HttpContext ctx) =>
 			// An owner: their own bots only, one at a time ("all" is everyone's).
@@ -356,11 +373,11 @@ public static class PanelApi
 
 		authed.MapGet("/playlists/{name}", (string name, Playlists lists) => lists.Find(name) is { } p ? Results.Ok(p) : Results.NotFound());
 		// Creates a list or adds songs to it: the given songs, or what a bot is playing plus its queue.
-		admin.MapPost("/playlists", (PlaylistRequest req, Playlists lists, BotManager bots) =>
+		admin.MapPost("/playlists", (PlaylistRequest req, Playlists lists, BotManager bots, Library library) =>
 		{
 			var name = (req.Name ?? "").Trim();
 			if (!Playlists.IsValidName(name)) return Problem("bad-playlist-name");
-			var songs = (req.Songs ?? []).Where(IsValidSong).ToList();
+			var songs = (req.Songs ?? []).Where(s => IsValidSong(s, library)).ToList();
 			if (req.FromBot != null && bots.Get(req.FromBot) is { } b)
 			{
 				var s = b.Player.GetState();
@@ -385,10 +402,13 @@ public static class PanelApi
 		});
 		admin.MapDelete("/playlists/{name}/songs/{index:int}", (string name, int index, string id, Playlists lists) => Done(lists.RemoveSong(name, index, id)));
 
-		bot.MapPost("/playlist", (PlayPlaylistRequest req, BotInstance b, Playlists lists, HttpContext ctx) =>
+		bot.MapPost("/playlist", (PlayPlaylistRequest req, BotInstance b, Playlists lists, Library library, HttpContext ctx) =>
 		{
 			if (lists.Find(req.Name ?? "") is not { } p) return Results.NotFound();
-			var songs = p.Songs.Select(s => s.ToTrack("🌐 " + ctx.User.Identity?.Name) with { RequesterId = "panel:" + ctx.User.Identity?.Name });
+			var by = "🌐 " + ctx.User.Identity?.Name;
+			var requester = "panel:" + ctx.User.Identity?.Name;
+			var songs = p.Songs.Select(s =>
+				(s.Source == Media.Upload ? library.Find(s.Id, by) ?? s.ToTrack(by) : s.ToTrack(by)) with { RequesterId = requester });
 			if (req.Shuffle) songs = songs.OrderBy(_ => Random.Shared.Next());
 			var added = b.Player.EnqueueMany(songs.ToList(), exempt: Manages(ctx), out var limited);
 			return added == 0 && p.Songs.Count > 0 ? Problem(limited ? "user-limit" : "queue-full") : Results.Ok(new { added, limited });
@@ -518,6 +538,127 @@ public static class PanelApi
 		}
 		return Results.Json(json, opts);
 	}
+
+	static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+	{
+		".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav", ".wma",
+	};
+
+	static async Task<IResult> UploadAudio(HttpContext ctx, BotInstance bot, Library library, YouTube youtube,
+		PandaConfig config, ILoggerFactory loggerFactory)
+	{
+		var log = loggerFactory.CreateLogger(nameof(PanelApi));
+		var maxBytes = Math.Clamp(config.Library.MaxUploadSizeMb, 1, 1024) * 1024L * 1024;
+		const long MultipartOverhead = 1024 * 1024;
+		var maxRequestBytes = maxBytes + MultipartOverhead;
+		if (ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+			limit.MaxRequestBodySize = maxRequestBytes;
+		if (ctx.Request.ContentLength > maxRequestBytes) return UploadError("too-large", StatusCodes.Status413PayloadTooLarge);
+		if (!MediaTypeHeaderValue.TryParse(ctx.Request.ContentType, out var contentType)
+			|| !string.Equals(contentType.MediaType.Value, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
+			return Problem("bad-audio");
+		var boundary = HeaderUtilities.RemoveQuotes(contentType.Boundary).Value;
+		if (string.IsNullOrEmpty(boundary) || boundary.Length > 128) return Problem("bad-audio");
+
+		string? tempPath = null, coverTempPath = null;
+		using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+		try
+		{
+			var reader = new MultipartReader(boundary, ctx.Request.Body) { BodyLengthLimit = maxRequestBytes };
+			string? title = null;
+			long size = 0;
+			MultipartSection? section;
+			while ((section = await reader.ReadNextSectionAsync(ctx.RequestAborted)) is not null)
+			{
+				if (!System.Net.Http.Headers.ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition)
+					|| !disposition.DispositionType.Equals("form-data", StringComparison.OrdinalIgnoreCase)
+					|| (disposition.FileName is null && disposition.FileNameStar is null))
+					continue;
+				if (tempPath is not null) return Problem("bad-audio");
+				var submittedName = (disposition.FileNameStar ?? disposition.FileName ?? "").Trim('"').Replace('\\', '/');
+				var extension = Path.GetExtension(Path.GetFileName(submittedName));
+				if (!AudioExtensions.Contains(extension)) return Problem("bad-audio");
+				title = Path.GetFileNameWithoutExtension(submittedName);
+				if (string.IsNullOrWhiteSpace(title)) title = "Uploaded audio";
+				if (title.Length > 300) title = title[..300];
+				tempPath = library.NewUploadTempPath();
+				await using var output = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+					81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+				var buffer = new byte[81920];
+				int read;
+				while ((read = await section.Body.ReadAsync(buffer, ctx.RequestAborted)) > 0)
+				{
+					size += read;
+					if (size > maxBytes) return UploadError("too-large", StatusCodes.Status413PayloadTooLarge);
+					hasher.AppendData(buffer, 0, read);
+					await output.WriteAsync(buffer.AsMemory(0, read), ctx.RequestAborted);
+				}
+			}
+			if (tempPath is null || title is null || size == 0) return Problem("bad-audio");
+
+			var hash = Convert.ToHexString(hasher.GetHashAndReset()).ToLowerInvariant();
+			if (library.FindUploadByHash(hash) is { } existing)
+				return DuplicateUpload(title, existing.Title);
+
+			var by = "🌐 " + ctx.User.Identity?.Name;
+			coverTempPath = library.NewUploadCoverTempPath();
+			var probed = await youtube.ProbeLocalFileAsync(tempPath, title, by, ctx.RequestAborted, coverTempPath);
+			var saved = library.AddUpload(tempPath, probed, hash, coverTempPath);
+			if (saved.Duplicate is { } duplicate) return DuplicateUpload(title, duplicate.Title);
+			if (saved.Track is not { } track) return Problem("library-full");
+			track = track with { RequesterId = "panel:" + ctx.User.Identity?.Name };
+			try
+			{
+				bot.Player.Enqueue(track, exempt: Manages(ctx));
+			}
+			catch (QueueFullException)
+			{
+				library.Delete(track.Id);
+				return Problem("queue-full");
+			}
+			catch (UserLimitException)
+			{
+				library.Delete(track.Id);
+				return Problem("user-limit");
+			}
+			return Added(ctx, track, 0, null);
+		}
+		catch (YouTubeException ex) { return Problem(ex.Message); }
+		catch (InvalidDataException) { return UploadError("too-large", StatusCodes.Status413PayloadTooLarge); }
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			log.LogError(ex, "Could not store uploaded audio");
+			return UploadError("upload-storage", StatusCodes.Status500InternalServerError);
+		}
+		finally
+		{
+			if (tempPath is not null)
+			{
+				try { File.Delete(tempPath); }
+				catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+				{
+					log.LogWarning(ex, "Could not remove temporary uploaded audio");
+				}
+			}
+			if (coverTempPath is not null)
+			{
+				try { File.Delete(coverTempPath); }
+				catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+				{
+					log.LogWarning(ex, "Could not remove temporary uploaded cover art");
+				}
+			}
+		}
+	}
+
+	static IResult DuplicateUpload(string submittedTitle, string existingTitle) =>
+		Results.Conflict(new
+		{
+			error = "duplicate-upload",
+			trackTitle = string.Equals(submittedTitle, existingTitle, StringComparison.OrdinalIgnoreCase) ? null : existingTitle,
+		});
+
+	static IResult UploadError(string code, int status) => Results.Json(new { error = code }, statusCode: status);
 
 	// Saved either way; it's on the server now (applied), on the next connection (offline), or the server said no.
 	static IResult AvatarResult(string? error) =>
@@ -791,7 +932,7 @@ public static class PanelApi
 	public sealed record UserRequest(string? Name, string? Password, string? Role, string? Uid = null);
 	/// <param name="Like">Copy the server address from this bot.</param>
 	public sealed record AddBotRequest(string? Like);
-	public sealed record PlayRequest(string? Query, bool Now = false, string? RequestedBy = null);
+	public sealed record PlayRequest(string? Query, bool Now = false, string? RequestedBy = null, string? Id = null);
 	public sealed record SeekRequest(double Seconds);
 	public sealed record VolumeRequest(int Volume);
 	public sealed record LoopRequest(LoopMode Mode);
@@ -806,8 +947,9 @@ public static class PanelApi
 	public sealed record PlayPlaylistRequest(string? Name, bool Shuffle = false);
 
 	// A YouTube video, or a song from another site with its link (not a radio station: that's a favorite station).
-	static bool IsValidSong(PlaylistSong s) =>
+	static bool IsValidSong(PlaylistSong s, Library library) =>
 		(s.Source is null ? s.Id is { } id && Media.IsVideoId(id)
+			: s.Source == Media.Upload ? library.IsUploaded(s.Id)
 			: s.Source is Media.Link or Media.Direct && s.Id is { Length: > 0 and <= 120 } other && !other.Any(char.IsControl)
 				&& Media.IsWebLink(s.Link) && (s.Art is null || Media.IsWebLink(s.Art)))
 		&& s.Title is { Length: > 0 and <= 300 } && (s.Channel ?? "").Length <= 200 && s.Duration is >= 0 and <= 86400;
@@ -870,6 +1012,7 @@ public sealed class SettingsDto
 	public int MaxDurationMinutes { get; set; }
 	public bool LibraryEnabled { get; set; }
 	public int LibraryMaxSizeMb { get; set; }
+	public int? MaxUploadSizeMb { get; set; }
 	public bool NormalizeVolume { get; set; }
 	/// <summary>The loudness songs are brought to: -18 (natural), -14 (standard), -11 (loud).</summary>
 	public double? TargetLufs { get; set; }
@@ -953,6 +1096,7 @@ public sealed class SettingsDto
 		MaxDurationMinutes = c.YouTube.MaxDurationMinutes,
 		LibraryEnabled = c.Library.Enabled,
 		LibraryMaxSizeMb = c.Library.MaxSizeMb,
+		MaxUploadSizeMb = Math.Clamp(c.Library.MaxUploadSizeMb, 1, 1024),
 		NormalizeVolume = c.Audio.Normalize,
 		TargetLufs = c.Audio.TargetLufs,
 		HasCookies = c.YouTube.CookiesFile.Length > 0 && File.Exists(c.YouTube.CookiesFile),
@@ -1064,6 +1208,7 @@ public sealed class SettingsDto
 		if (MaxDurationMinutes is >= 0 and <= 1440) c.YouTube.MaxDurationMinutes = MaxDurationMinutes;
 		c.Library.Enabled = LibraryEnabled;
 		if (LibraryMaxSizeMb is 0 or (>= 100 and <= 1_000_000)) c.Library.MaxSizeMb = LibraryMaxSizeMb;
+		if (MaxUploadSizeMb is >= 1 and <= 1024) c.Library.MaxUploadSizeMb = MaxUploadSizeMb.Value;
 		c.Audio.Normalize = NormalizeVolume;
 		if (TargetLufs is >= -24 and <= -9) c.Audio.TargetLufs = Math.Round(TargetLufs.Value);
 		// Left out (an older panel, a script): kept as they are.

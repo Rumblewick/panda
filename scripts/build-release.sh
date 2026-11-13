@@ -45,7 +45,7 @@ pack() {
 	(cd dist && sha256sum * > SHA256SUMS)
 }
 
-if command -v wsl.exe >/dev/null; then
+if [[ -n "${MSYSTEM:-}" ]] && command -v wsl.exe >/dev/null; then 
 	# Packed on WSL's own disk: files on /mnt/c have no Unix permissions of their own.
 	script=build/pack.sh
 	{

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -8,14 +9,17 @@ public sealed record LibraryItem(
 	string Id, string Title, string Channel, int Duration, long Size,
 	int Plays, DateTimeOffset? LastPlayed, DateTimeOffset Added)
 {
-	public string Url => $"https://www.youtube.com/watch?v={Id}";
-	public string Thumbnail => $"https://i.ytimg.com/vi/{Id}/hqdefault.jpg";
+	public string? Source { get; init; }
+	public string Url => Source == Media.Upload ? "" : $"https://www.youtube.com/watch?v={Id}";
+	public string? Thumbnail { get; init; }
 }
 
 public sealed record LibraryInfo(bool Enabled, long UsedBytes, long LimitBytes, int Count, IReadOnlyList<LibraryItem> Items);
 
 /// <param name="Plays">Goes up with every play, so the panel knows the play counts changed.</param>
 public sealed record LibrarySummary(bool Enabled, long UsedBytes, long LimitBytes, int Count, long Plays);
+
+public sealed record UploadResult(Track? Track, Track? Duplicate);
 
 /// <summary>
 /// Songs saved on disk. Every requested song is downloaded in the background (the next ones in the
@@ -39,6 +43,7 @@ public sealed class Library : IDisposable
 	// Per bot: the songs coming up and the one playing. "wanted" merges the queues, each bot's
 	// next song first, then the ones after.
 	readonly Dictionary<string, List<Track>> wantedBy = new();
+	readonly Dictionary<string, List<string>> queuedUploadsBy = new();
 	readonly Dictionary<string, string> nowPlayingBy = new();
 	List<Track> wanted = [];
 	readonly HashSet<string> busy = []; // ids being downloaded right now
@@ -74,25 +79,134 @@ public sealed class Library : IDisposable
 		MeasureMissing();
 	}
 
+	public Track? FindUploadByHash(string hash)
+	{
+		Track? duplicate;
+		bool migrated;
+		lock (gate)
+		{
+			duplicate = FindUploadByHashLocked(hash, out migrated) is { } song ? ToTrack(song, "") : null;
+		}
+		if (migrated) SaveSoon();
+		return duplicate;
+	}
+
+	public UploadResult AddUpload(string tempPath, Track track, string hash, string? coverTempPath = null)
+	{
+		var id = "upload-" + Guid.NewGuid().ToString("N");
+		var coverFile = coverTempPath is { } path && File.Exists(path) ? path : null;
+		var uploaded = track with
+		{
+			Id = id, Source = Media.Upload, Link = null,
+			Art = coverFile is not null ? Media.UploadCoverUrl(id) : null,
+		};
+		var size = new FileInfo(tempPath).Length;
+		lock (gate)
+		{
+			var duplicate = FindUploadByHashLocked(hash, out var migrated);
+			if (duplicate is not null)
+			{
+				if (migrated) SaveSoon();
+				return new(null, ToTrack(duplicate, ""));
+			}
+			if (!CanFitUploadLocked(size))
+			{
+				if (migrated) SaveSoon();
+				return new(null, null);
+			}
+			File.Move(tempPath, SongPath(id));
+			try
+			{
+				if (coverFile is not null) File.Move(coverFile, CoverPath(id));
+				songs.Add(id, new Song
+				{
+					Id = id, Title = uploaded.Title, Channel = uploaded.Channel,
+					Duration = uploaded.Duration, Size = size, Added = DateTimeOffset.UtcNow, Source = Media.Upload, Hash = hash,
+				});
+			}
+			catch
+			{
+				TryDelete(SongPath(id));
+				TryDelete(CoverPath(id));
+				throw;
+			}
+			EvictLocked(id);
+			QueueMeasureLocked(id);
+		}
+		SaveSoon();
+		Changed?.Invoke();
+		log.LogInformation("Saved uploaded audio {Title} ({Size:0.0} MB)", uploaded.Title, size / 1048576.0);
+		return new(uploaded, null);
+	}
+
 	public bool Enabled => config.Library.Enabled;
 	public string Folder => Dir;
 	string Dir => config.Library.Path.Length > 0 ? config.Library.Path : Path.Combine(dataDir, "library");
 	string TempDir => Path.Combine(Dir, ".tmp");
 	string IndexPath => Path.Combine(Dir, "library.json");
 	string SongPath(string id) => Path.Combine(Dir, id + ".audio");
+	string CoverPath(string id) => Path.Combine(Dir, id + ".cover.jpg");
 	string PrefetchPath(string id) => Path.Combine(TempDir, id + ".audio");
 	long LimitBytes => config.Library.MaxSizeMb <= 0 ? long.MaxValue : config.Library.MaxSizeMb * 1024L * 1024;
+	bool CanFitUploadLocked(long size)
+	{
+		var limit = LimitBytes;
+		if (size > limit) return false;
+		var used = UsedLocked();
+		var needed = used > limit - size ? used - (limit - size) : 0;
+		if (needed == 0) return true;
+
+		var keep = KeepLocked();
+		long reclaimable = 0;
+		foreach (var song in songs.Values
+			.Where(s => !keep.Contains(s.Id))
+			.OrderBy(s => PlaysOf(s.Id))
+			.ThenBy(s => stats.GetValueOrDefault(s.Id)?.LastPlayed ?? s.Added))
+		{
+			if (reclaimable >= needed) return true;
+			reclaimable += song.Size;
+		}
+		return reclaimable >= needed;
+	}
+
+	Song? FindUploadByHashLocked(string hash, out bool migrated)
+	{
+		migrated = false;
+		foreach (var song in songs.Values.Where(s => s.Source == Media.Upload))
+		{
+			if (song.Hash is null && File.Exists(SongPath(song.Id)))
+			{
+				song.Hash = HashFile(SongPath(song.Id));
+				migrated = true;
+			}
+			if (string.Equals(song.Hash, hash, StringComparison.OrdinalIgnoreCase)) return song;
+		}
+		return null;
+	}
+
+	static string HashFile(string path)
+	{
+		using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.SequentialScan);
+		return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+	}
+
+	static bool IsUploadId(string id) => id.StartsWith("upload-", StringComparison.Ordinal)
+		&& id.Length == 39 && id[7..].All(char.IsAsciiHexDigit);
+
+	public string NewUploadTempPath() => Path.Combine(TempDir, Guid.NewGuid().ToString("N") + ".upload");
+	public string NewUploadCoverTempPath() => Path.Combine(TempDir, Guid.NewGuid().ToString("N") + ".jpg");
 
 	// ---- lookups ----
 
 	/// <summary>A local file for this song (saved or prefetched), or null.</summary>
 	public string? GetFile(string id)
 	{
-		if (!Media.IsVideoId(id)) return null;
 		lock (gate)
 		{
-			if (songs.ContainsKey(id) && File.Exists(SongPath(id))) return SongPath(id);
+			if (songs.TryGetValue(id, out var song) && File.Exists(SongPath(id))
+				&& (Media.IsVideoId(id) || song.Source == Media.Upload && IsUploadId(id))) return SongPath(id);
 		}
+		if (!Media.IsVideoId(id)) return null;
 		var tmp = PrefetchPath(id);
 		return File.Exists(tmp) ? tmp : null;
 	}
@@ -100,7 +214,19 @@ public sealed class Library : IDisposable
 	public Track? Find(string id, string requestedBy)
 	{
 		lock (gate)
-			return songs.TryGetValue(id, out var s) ? s.ToTrack(requestedBy) : null;
+			return songs.TryGetValue(id, out var s) ? ToTrack(s, requestedBy) : null;
+	}
+
+	public bool IsUploaded(string id)
+	{
+		lock (gate) return IsUploadId(id) && songs.TryGetValue(id, out var song)
+			&& song.Source == Media.Upload && File.Exists(SongPath(id));
+	}
+
+	public string? GetUploadCoverPath(string id)
+	{
+		lock (gate) return IsUploadId(id) && songs.TryGetValue(id, out var song)
+			&& song.Source == Media.Upload && File.Exists(CoverPath(id)) ? CoverPath(id) : null;
 	}
 
 	/// <summary>Best saved song whose title/channel contains every word of the query.</summary>
@@ -113,7 +239,7 @@ public sealed class Library : IDisposable
 			return songs.Values
 				.Where(s => { var text = Normalize(s.Title + " " + s.Channel); return words.All(text.Contains); })
 				.OrderByDescending(s => PlaysOf(s.Id))
-				.FirstOrDefault()?.ToTrack(requestedBy);
+				.FirstOrDefault() is { } song ? ToTrack(song, requestedBy) : null;
 		}
 	}
 
@@ -148,8 +274,19 @@ public sealed class Library : IDisposable
 	LibraryItem ToItem(Song s)
 	{
 		var st = stats.GetValueOrDefault(s.Id);
-		return new(s.Id, s.Title, s.Channel, s.Duration, s.Size, st?.Plays ?? 0, st?.LastPlayed, s.Added);
+		return new(s.Id, s.Title, s.Channel, s.Duration, s.Size, st?.Plays ?? 0, st?.LastPlayed, s.Added)
+		{
+			Source = s.Source,
+			Thumbnail = s.Source == Media.Upload
+				? File.Exists(CoverPath(s.Id)) ? Media.UploadCoverUrl(s.Id) : null
+				: $"https://i.ytimg.com/vi/{s.Id}/hqdefault.jpg",
+		};
 	}
+
+	Track ToTrack(Song song, string requestedBy) => song.ToTrack(requestedBy) with
+	{
+		Art = song.Source == Media.Upload && File.Exists(CoverPath(song.Id)) ? Media.UploadCoverUrl(song.Id) : null,
+	};
 
 	int PlaysOf(string id) => stats.GetValueOrDefault(id)?.Plays ?? 0;
 	long playsSeen;
@@ -190,6 +327,7 @@ public sealed class Library : IDisposable
 		{
 			nowPlayingBy.Remove(bot);
 			wantedBy.Remove(bot);
+			queuedUploadsBy.Remove(bot);
 			MergeWantedLocked();
 		}
 		Signal();
@@ -197,12 +335,13 @@ public sealed class Library : IDisposable
 
 	public bool Delete(string id)
 	{
-		if (!Media.IsVideoId(id)) return false;
+		if (!Media.IsVideoId(id) && !IsUploadId(id)) return false;
 		lock (gate)
 		{
 			TryDelete(PrefetchPath(id));
 			if (!songs.Remove(id)) return false;
 			TryDelete(SongPath(id));
+			TryDelete(CoverPath(id));
 		}
 		SaveSoon();
 		Changed?.Invoke();
@@ -291,6 +430,7 @@ public sealed class Library : IDisposable
 			// Only YouTube songs are saved; songs from elsewhere are played as they come.
 			var list = queue.Where(t => !t.IsLive && t.IsYouTube);
 			wantedBy[bot] = (Enabled ? list : list.Take(PrefetchWhenDisabled)).ToList();
+			queuedUploadsBy[bot] = queue.Where(t => t.Source == Media.Upload && !t.IsLive).Select(t => t.Id).ToList();
 			MergeWantedLocked();
 			// A prefetch nobody needs any more is cancelled when songs aren't being saved.
 			if (!Enabled && currentDownloadId != null && wanted.All(t => t.Id != currentDownloadId))
@@ -312,6 +452,7 @@ public sealed class Library : IDisposable
 	HashSet<string> KeepLocked()
 	{
 		var keep = wanted.Select(t => t.Id).ToHashSet();
+		foreach (var uploads in queuedUploadsBy.Values) keep.UnionWith(uploads);
 		keep.UnionWith(nowPlayingBy.Values);
 		return keep;
 	}
@@ -342,6 +483,7 @@ public sealed class Library : IDisposable
 				!busy.Contains(t.Id)
 				&& !(max > 0 && t.Duration > max * 60)
 				&& !(retryAfter.TryGetValue(t.Id, out var until) && until > now)
+				&& t.IsYouTube
 				&& !songs.ContainsKey(t.Id)
 				&& !File.Exists(PrefetchPath(t.Id)));
 		}
@@ -434,7 +576,7 @@ public sealed class Library : IDisposable
 				songs[track.Id] = new Song
 				{
 					Id = track.Id, Title = track.Title, Channel = track.Channel,
-					Duration = track.Duration, Size = size, Added = DateTimeOffset.UtcNow,
+					Duration = track.Duration, Size = size, Added = DateTimeOffset.UtcNow, Source = track.Source,
 				};
 				EvictLocked();
 				log.LogInformation("Saved {Title} ({Size:0.0} MB)", track.Title, size / 1048576.0);
@@ -453,11 +595,15 @@ public sealed class Library : IDisposable
 	// Deletes the least played songs (oldest first among equals) until the folder fits the limit.
 	// Songs that are playing or waiting in the queue are kept.
 	void EvictLocked()
+		=> EvictLocked(null);
+
+	void EvictLocked(string? keepId)
 	{
 		var limit = LimitBytes;
 		var used = UsedLocked();
 		if (used <= limit) return;
 		var keep = KeepLocked();
+		if (keepId != null) keep.Add(keepId);
 		var victims = songs.Values
 			.Where(s => !keep.Contains(s.Id))
 			.OrderBy(s => PlaysOf(s.Id))
@@ -468,6 +614,7 @@ public sealed class Library : IDisposable
 			if (used <= limit) break;
 			songs.Remove(v.Id);
 			TryDelete(SongPath(v.Id));
+			TryDelete(CoverPath(v.Id));
 			used -= v.Size;
 			log.LogInformation("Library full: removed {Title} ({Plays} plays)", v.Title, PlaysOf(v.Id));
 		}
@@ -503,7 +650,8 @@ public sealed class Library : IDisposable
 				var idx = JsonSerializer.Deserialize<IndexFile>(File.ReadAllText(IndexPath), JsonOpts);
 				if (idx != null)
 				{
-					songs = idx.Songs.DistinctBy(s => s.Id).ToDictionary(s => s.Id);
+					songs = idx.Songs.Where(s => Media.IsVideoId(s.Id) || s.Source == Media.Upload && IsUploadId(s.Id))
+						.DistinctBy(s => s.Id).ToDictionary(s => s.Id);
 					stats = idx.Stats;
 				}
 			}
@@ -522,6 +670,11 @@ public sealed class Library : IDisposable
 			foreach (var f in Directory.EnumerateFiles(Dir, "*.audio"))
 				if (!songs.ContainsKey(Path.GetFileNameWithoutExtension(f)))
 					TryDelete(f);
+		foreach (var f in Directory.EnumerateFiles(Dir, "upload-*.cover.jpg"))
+		{
+			var id = Path.GetFileName(f)[..^".cover.jpg".Length];
+			if (!songs.ContainsKey(id)) TryDelete(f);
+		}
 	}
 
 	void SaveSoon()
@@ -598,6 +751,8 @@ public sealed class Library : IDisposable
 	sealed class Song
 	{
 		public string Id { get; set; } = "";
+		public string? Source { get; set; }
+		public string? Hash { get; set; }
 		public string Title { get; set; } = "";
 		public string Channel { get; set; } = "";
 		public int Duration { get; set; }
@@ -606,7 +761,7 @@ public sealed class Library : IDisposable
 		/// <summary>Integrated loudness (LUFS) and sample peak (dBFS); null until measured.</summary>
 		public double? Loudness { get; set; }
 		public double? Peak { get; set; }
-		public Track ToTrack(string requestedBy) => new(Id, Title, Channel, Duration, requestedBy);
+		public Track ToTrack(string requestedBy) => new(Id, Title, Channel, Duration, requestedBy) { Source = Source };
 	}
 
 	sealed class Stat

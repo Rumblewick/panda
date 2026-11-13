@@ -28,11 +28,15 @@ programı yok: Panda sunucuyla doğrudan konuşur, bu yüzden hafiftir (bot ~130
 - 🔗 **Her yerden link** — SoundCloud, Bandcamp, Mixcloud, Vimeo, Twitch ve ses dosyaları oradan çalar;
   **Spotify, Apple Music, Deezer ve Tidal** linkleri YouTube'da aranır (Spotify albümü ya da listesi
   şarkı şarkı gelir); başka her sayfanın başlığı aranır. Her kaynak ayrı kapatılabilir.
+- ⬆️ **Panelden dosya yükle** — yaygın ses dosyalarını doğrudan panelden yükle; dosya sıraya eklenir
+  ve kütüphaneye kaydedilir. Aynı ses ikinci kez yüklenemez; dosya adı farklıysa kayıtlı parça adı
+  gösterilir. Gömülü kapak resmi varsa gösterilir. Dosya sınırı varsayılan 25 MB'tır, Ayarlar'dan
+  1 MB–1 GB arasında seçilebilir.
 - 📻 **İnternet radyosu** — radyonun yayın linkini yapıştır (Icecast/Shoutcast, `.m3u`, `.pls`) ya da
   panelde ada, ülkeye ve türe göre radyo bul ([Radio Browser](https://www.radio-browser.info/)'dan),
   sohbette `!fm <ad>`. Radyoda çalan şarkı panelde ve botun açıklamasında görünür.
-- 📚 **Şarkı kütüphanesi** — istenen her şarkı diske kaydedilir. Tekrar çalınan şarkılar anında başlar
-  ve YouTube'a hiç gitmez; kütüphane dolunca en az dinlenen şarkılar yer açar.
+- 📚 **Şarkı kütüphanesi** — kaydetme açıkken YouTube şarkıları, ayrıca panelden yüklenen dosyalar
+  diske kaydedilir. Kayıtlı şarkılar anında başlar; kütüphane dolunca en az dinlenenler yer açar.
 - ⚡ **Şarkılar arası bekleme yok** — sıradaki şarkılar önceden indirilir.
 - ✨ **Otomatik devam** — sıra bitince Panda son şarkıya benzer şarkılar çalmaya devam eder (YouTube Mix).
   Varsayılan olarak kapalı; `!otomatik` ya da ✨ düğmesiyle açılır. (0.5'e kadar adı "radyo"ydu.)
@@ -100,8 +104,9 @@ seçer: `!çal sc:lofi`, `!ara ytm:blinding lights`.
 | Radyo yayını (Icecast/Shoutcast, `.m3u`, `.pls`, HLS) | Radyo, canlı |
 | Başka herhangi bir sayfa | Başlığı YouTube'da aranır |
 
-Kütüphaneye sadece YouTube şarkıları kaydedilir; başka yerlerden gelen şarkılar olduğu gibi çalınır,
-otomatik devam son YouTube şarkısından devam eder. Kendi ağındaki linkler (modemin sayfası, `192.168.x.x`)
+Kütüphaneye YouTube şarkıları (kaydetme açıksa) ve panelden yüklenen dosyalar kaydedilir; başka
+yerlerden gelen şarkılar olduğu gibi çalınır, otomatik devam son YouTube şarkısından devam eder.
+Kendi ağındaki linkler (modemin sayfası, `192.168.x.x`)
 **Yerel ağdaki linkler** açık değilse reddedilir; böylece kimse Panda'ya onları açtıramaz.
 
 **İnternet radyosu**: aramanın yanındaki 📻 düğmesi radyo listesini açar (radyolar

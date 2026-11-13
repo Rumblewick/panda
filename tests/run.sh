@@ -13,7 +13,7 @@ results=()
 run() { local name=$1; shift; echo; echo "##### $name"; if "$@"; then results+=("PASS $name"); else results+=("FAIL $name"); fi; }
 
 # On Windows the tests run in WSL; paths become /mnt/c/...
-if command -v wsl.exe >/dev/null; then
+if [ -n "${MSYSTEM:-}" ] && command -v wsl.exe >/dev/null; then
 	in_linux() { MSYS_NO_PATHCONV=1 wsl.exe "$@"; }
 	lp() { printf '/mnt/%s' "$(echo "$1" | sed -E 's#^/([a-zA-Z])/#\L\1/#')"; }
 else
