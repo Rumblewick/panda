@@ -314,7 +314,7 @@ public static class PanelApi
 			ctx.User.IsInRole(Roles.Owner) && (bots.Get(bot ?? "") is not { } b || Me(ctx, config)?.Owns(b.Config) != true)
 				? Results.NotFound(new { error = "no-bot" })
 				: Results.Ok(stats.Get(bot, days ?? 30, tz ?? 0)));
-		admin.MapDelete("/library/{id}", (string id, Library library) => Done(library.Delete(id)));
+		admin.MapDelete("/library/{id}", (string id, Library library, BotManager bots) => Done(library.Delete(id, bots)));
 
 		// A backup of the settings, identities, histories and lists; restoring one restarts Panda.
 		admin.MapGet("/backup", (DataPaths paths) =>

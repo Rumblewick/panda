@@ -443,6 +443,43 @@ public sealed class Player : IDisposable
 		return removed;
 	}
 
+	public bool RemoveTrack(string id)
+	{
+		bool removed = false;
+		lock (gate)
+		{
+			if (current is { Id: var currentId } && currentId == id)
+			{
+				queue.RemoveAll(t => t.Id == id);
+				if (queue.Count > 0)
+				{
+					var next = queue[0];
+					queue.RemoveAt(0);
+					StopSourceLocked();
+					current = null;
+					StartLocked(next, 0);
+					removed = true;
+				}
+				else
+				{
+					epoch++;
+					autoGen++;
+					StopSourceLocked();
+					current = null;
+					removed = true;
+				}
+			}
+			else
+			{
+				removed = queue.RemoveAll(t => t.Id == id) > 0;
+				if (removed) { epoch++; autoGen++; }
+			}
+			history.RemoveSong(id);
+		}
+		if (removed) RaiseChanged();
+		return removed;
+	}
+
 	public bool Move(int from, int to, string? expectedId = null)
 	{
 		lock (gate)

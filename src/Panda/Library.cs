@@ -333,15 +333,33 @@ public sealed class Library : IDisposable
 		Signal();
 	}
 
-	public bool Delete(string id)
+	public bool Delete(string id, BotManager? bots = null)
 	{
 		if (!Media.IsVideoId(id) && !IsUploadId(id)) return false;
+		Stat? stat = null;
 		lock (gate)
 		{
 			TryDelete(PrefetchPath(id));
 			if (!songs.Remove(id)) return false;
+			if (stats.Remove(id, out var old)) { stat = old; playsSeen = Math.Max(0, playsSeen - old.Plays); }
+			foreach (var list in wantedBy.Values) list.RemoveAll(t => t.Id == id);
+			foreach (var list in queuedUploadsBy.Values) list.RemoveAll(t => t == id);
+			foreach (var id2 in nowPlayingBy.Where(kvp => kvp.Value == id).Select(kvp => kvp.Key).ToList()) nowPlayingBy.Remove(id2);
+			prefetchLoudness.Remove(id);
+			busy.Remove(id);
+			retryAfter.Remove(id);
+			if (currentDownloadId == id) currentDownload?.Cancel();
+			MergeWantedLocked();
 			TryDelete(SongPath(id));
 			TryDelete(CoverPath(id));
+		}
+		if (bots is not null)
+		{
+			foreach (var bot in bots.All)
+			{
+				bot.Player.RemoveTrack(id);
+				bot.History.RemoveSong(id);
+			}
 		}
 		SaveSoon();
 		Changed?.Invoke();

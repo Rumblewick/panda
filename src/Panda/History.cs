@@ -51,6 +51,28 @@ public sealed class PlayHistory
 		lock (gate) return recent.ToArray();
 	}
 
+	public void RemoveSong(string id)
+	{
+		List<PlayedTrack> all;
+		lock (gate)
+		{
+			all = ReadAll().Where(p => p.Id != id).ToList();
+			try
+			{
+				File.WriteAllText(path, string.Concat(all.Select(p => JsonSerializer.Serialize(p, JsonOpts) + "\n")), Utf8NoBom);
+			}
+			catch (Exception ex)
+			{
+				log.LogWarning("Could not rewrite {Path}: {Error}", path, ex.Message);
+				return;
+			}
+			Added = all.Count;
+			recent.Clear();
+			for (int i = all.Count - 1; i >= 0 && recent.Count < RecentSize; i--)
+				recent.Add(all[i]);
+		}
+	}
+
 	public void Add(PlayedTrack played)
 	{
 		lock (gate)
