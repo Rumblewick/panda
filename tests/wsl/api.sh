@@ -239,6 +239,7 @@ check "the track title comes from the audio tags" "$(printf '%s' "$UPLOAD" | jso
 UPLOAD_ID=$(printf '%s' "$UPLOAD" | json "d['id']")
 check "the uploaded track is reusable from the library" "$(curl -s -b $J "$P/api/library?q=Web%20Song" | json "d['items'][0]['id']")" "$UPLOAD_ID"
 check "uploaded tracks can be saved to playlists" "$(post /api/playlists "{\"name\":\"Uploads\",\"songs\":[{\"id\":\"$UPLOAD_ID\",\"title\":\"Web Song\",\"channel\":\"Web Artist\",\"duration\":60,\"source\":\"upload\"}]}" | json "len(d['songs'])")" 1
+check "the track can be saved to another playlist" "$(post /api/playlists "{\"name\":\"More uploads\",\"songs\":[{\"id\":\"$UPLOAD_ID\",\"title\":\"Web Song\",\"channel\":\"Web Artist\",\"duration\":60,\"source\":\"upload\"}]}" | json "len(d['songs'])")" 1
 DUPLICATE_STATUS=$(curl -s -b $J -F "file=@$T/web/song.mp3;filename=Web Song.mp3" -o /tmp/panda-api-duplicate.json -w '%{http_code}' $P/api/bots/1/upload)
 check "the same audio cannot be uploaded twice" "$DUPLICATE_STATUS" 409
 check "the duplicate error uses the track title" "$(json "d['error']" < /tmp/panda-api-duplicate.json)" duplicate-upload
@@ -246,6 +247,7 @@ check "the same track filename needs no extra title" "$(json "d.get('trackTitle'
 DUPLICATE_NAMED_STATUS=$(curl -s -b $J -F "file=@$T/web/song.mp3;filename=renamed.mp3" -o /tmp/panda-api-duplicate-named.json -w '%{http_code}' $P/api/bots/1/upload)
 check "a renamed duplicate is refused" "$DUPLICATE_NAMED_STATUS" 409
 check "a renamed duplicate identifies the existing track" "$(json "d['trackTitle']" < /tmp/panda-api-duplicate-named.json)" "Web Song"
+check "deleting an uploaded track removes it from every playlist" "$(code -b $J -X DELETE "$P/api/library/$UPLOAD_ID") $(curl -s -b $J "$P/api/playlists/Uploads" | json "len(d['songs'])") $(curl -s -b $J "$P/api/playlists/More%20uploads" | json "len(d['songs'])")" "204 0 0"
 curl -s -b $J -X POST $P/api/bots/1/control/stop -o /dev/null
 COVER_STATUS=$(curl -s -b $J -F "file=@$T/web/song-cover.mp3" -o /tmp/panda-api-cover-upload.json -w '%{http_code}' $P/api/bots/1/upload)
 check "the covered audio upload succeeds" "$COVER_STATUS" 200

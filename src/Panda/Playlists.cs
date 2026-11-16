@@ -183,6 +183,26 @@ public sealed class Playlists
 		return true;
 	}
 
+	/// <summary>Removes a track from every playlist.</summary>
+	public bool RemoveTrack(string id)
+	{
+		var changed = false;
+		lock (gate)
+		{
+			var updated = lists.Select(p =>
+			{
+				var songs = p.Songs.Where(s => s.Id != id).ToList();
+				if (songs.Count == p.Songs.Count) return p;
+				changed = true;
+				return p with { Songs = songs, Updated = DateTimeOffset.UtcNow };
+			}).ToList();
+			if (!changed) return false;
+			lists = updated;
+		}
+		Persist();
+		return true;
+	}
+
 	public bool Delete(string name)
 	{
 		lock (gate)
