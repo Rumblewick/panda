@@ -205,7 +205,7 @@ foreach (var proxy in config.Panel.TrustedProxies)
 		app.Logger.LogWarning("panel.trustedProxies: {Proxy} is not an address", proxy);
 	else if (parts.Length == 1) forwarded.KnownProxies.Add(address);
 	else if (parts.Length == 2 && int.TryParse(parts[1], out var bits) && bits >= 0 && bits <= (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128))
-		forwarded.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(address, bits));
+		forwarded.KnownIPNetworks.Add(new System.Net.IPNetwork(address, bits));
 	else app.Logger.LogWarning("panel.trustedProxies: {Proxy} is not an address", proxy);
 }
 app.UseForwardedHeaders(forwarded);

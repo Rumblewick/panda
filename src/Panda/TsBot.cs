@@ -156,6 +156,23 @@ public sealed partial class TsBot : BackgroundService
 
 	protected override async Task ExecuteAsync(CancellationToken ct)
 	{
+		// Since .NET 11 an exception that escapes ExecuteAsync stops the host; a bot that lost its
+		// identity file or hit a bug must not take the panel down with it. Logged, retried with backoff.
+		while (!ct.IsCancellationRequested)
+		{
+			try { await RunAsync(ct); break; }
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				log.LogError(ex, "Bot loop failed, retrying in 10 s");
+				SetState("disconnected", ex.Message);
+				try { await Task.Delay(TimeSpan.FromSeconds(10), ct); }
+				catch (OperationCanceledException) { break; }
+			}
+		}
+	}
+
+	async Task RunAsync(CancellationToken ct)
+	{
 		identity = LoadOrCreateIdentity();
 		var delay = TimeSpan.FromSeconds(3);
 		var stopped = Task.Delay(Timeout.Infinite, ct);
