@@ -231,30 +231,30 @@ public sealed partial class Updates(PandaConfig config, DataPaths paths, SystemI
 		var before = (await system.ToolsAsync(fresh: true)).YtDlp;
 		switch (InstallKind())
 		{
-		case "systemd":
-			// The daily timer and this trigger update the installer's copy; make sure that is the one in use.
-			const string installed = "/opt/panda/bin/yt-dlp";
-			if (config.YouTube.YtDlpPath != installed && File.Exists(installed)
-				&& Path.GetFullPath(config.YouTube.YtDlpPath).StartsWith(Path.GetFullPath(paths.Data)))
-			{
-				config.YouTube.YtDlpPath = installed;
-				config.Save();
-			}
-			log.LogInformation("Updating yt-dlp {Version}", before);
-			File.WriteAllText(YtDlpTrigger, DateTimeOffset.UtcNow.ToString("o"));
-			var state = await WaitForSystemdAsync();
-			var after = (await system.ToolsAsync(fresh: true)).YtDlp;
-			var result = state switch
-			{
-				"failed" => "failed",
-				"pending" => "pending",
-				_ => after != before ? "updated" : "current",
-			};
-			log.LogInformation("yt-dlp update: {Result} ({From} -> {To})", result, before, after);
-			return new YtDlpUpdate(result, before, after);
-		case "systemd-old":
-			// Downloading a private copy here would leave the daily updates behind for good.
-			return new YtDlpUpdate("reinstall", before, before);
+			case "systemd":
+				// The daily timer and this trigger update the installer's copy; make sure that is the one in use.
+				const string installed = "/opt/panda/bin/yt-dlp";
+				if (config.YouTube.YtDlpPath != installed && File.Exists(installed)
+					&& Path.GetFullPath(config.YouTube.YtDlpPath).StartsWith(Path.GetFullPath(paths.Data)))
+				{
+					config.YouTube.YtDlpPath = installed;
+					config.Save();
+				}
+				log.LogInformation("Updating yt-dlp {Version}", before);
+				File.WriteAllText(YtDlpTrigger, DateTimeOffset.UtcNow.ToString("o"));
+				var state = await WaitForSystemdAsync();
+				var after = (await system.ToolsAsync(fresh: true)).YtDlp;
+				var result = state switch
+				{
+					"failed" => "failed",
+					"pending" => "pending",
+					_ => after != before ? "updated" : "current",
+				};
+				log.LogInformation("yt-dlp update: {Result} ({From} -> {To})", result, before, after);
+				return new YtDlpUpdate(result, before, after);
+			case "systemd-old":
+				// Downloading a private copy here would leave the daily updates behind for good.
+				return new YtDlpUpdate("reinstall", before, before);
 		}
 		var (code, output) = await RunAsync(config.YouTube.YtDlpPath, "-U");
 		log.LogInformation("yt-dlp -U: {Output}", output.Trim());
@@ -303,16 +303,44 @@ public sealed partial class Updates(PandaConfig config, DataPaths paths, SystemI
 		return "pending";
 	}
 
-	static string? YtDlpAsset() =>
+	/// <summary>The yt-dlp release asset for this system, or null when there is none.</summary>
+	internal static string? YtDlpAsset() =>
 		OperatingSystem.IsWindows() ? "yt-dlp.exe"
 		: OperatingSystem.IsMacOS() ? "yt-dlp_macos"
-		: OperatingSystem.IsLinux() ? RuntimeInformation.OSArchitecture switch
+		: OperatingSystem.IsLinux() ? YtDlpLinuxAsset(RuntimeInformation.OSArchitecture, IsMusl(RuntimeInformation.OSArchitecture))
+		: null;
+
+	/// <summary>
+	/// The yt-dlp build for a Linux system, per CPU: the plain ones are for glibc (Debian, Fedora...),
+	/// the musllinux ones for musl (Alpine).
+	/// </summary>
+	internal static string? YtDlpLinuxAsset(Architecture architecture, bool musl) => musl switch
+	{
+		true => architecture switch
+		{
+			Architecture.X64 => "yt-dlp_musllinux",
+			Architecture.Arm64 => "yt-dlp_musllinux_aarch64",
+			_ => null,
+		},
+		false => architecture switch
 		{
 			Architecture.X64 => "yt-dlp_linux",
 			Architecture.Arm64 => "yt-dlp_linux_aarch64",
 			_ => null,
-		}
-		: null;
+		},
+	};
+
+	/// <summary>Where a musl system (Alpine and friends) keeps its dynamic linker; a glibc one has none of these.</summary>
+	internal static string[] MuslLinkers(Architecture architecture) => architecture switch
+	{
+		Architecture.X64 => ["/lib/ld-musl-x86_64.so.1", "/lib64/ld-musl-x86_64.so.1"],
+		Architecture.Arm64 => ["/lib/ld-musl-aarch64.so.1", "/lib64/ld-musl-aarch64.so.1"],
+		_ => [],
+	};
+
+	/// <summary>Whether Linux here is musl-based (Alpine) instead of glibc: it has a musl dynamic linker.</summary>
+	internal static bool IsMusl(Architecture architecture, Func<string, bool>? fileExists = null) =>
+		MuslLinkers(architecture).Any(fileExists ?? File.Exists);
 
 	static async Task<(int Code, string Output)> RunAsync(string file, string arg)
 	{
